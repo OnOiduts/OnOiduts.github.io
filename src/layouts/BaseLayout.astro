@@ -1,0 +1,59 @@
+---
+/**
+ * 全站骨架：明暗与世界在 <html> 上首屏落值（无闪烁），导航 + 内容 + 页脚 + 覆盖层。
+ */
+import '../styles/global.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import Overlays from '../components/Overlays.astro';
+import { THEME_BOOTSTRAP } from '../scripts/theme';
+
+interface Props {
+  title: string;
+  description?: string;
+  withProgress?: boolean;
+}
+const { title, description = 'OnOiduts工业 —— 瞎搞的小工具', withProgress = false } = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-world="org">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- GitHub Pages 发不了响应头（X-Content-Type-Options / Referrer-Policy /
+         frame-ancestors 都设不了），只能用 meta 版 CSP，且能力受限。
+         这里只写两条零风险的：禁 <object>/<embed> 旧式插件、锁 <base>。
+         ⚠️ 故意不限制 img-src / media-src / frame-src —— 一限就会把
+            B站 / YouTube / 网易云 iframe 和站内媒体一起挡掉。
+         ⚠️ meta CSP 对它之前加载的资源无效，所以要尽量靠前。 -->
+    <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/OnOiduts.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <script is:inline set:html={THEME_BOOTSTRAP} />
+  </head>
+  <body>
+    <div id="app">
+      <Nav />
+      <main>
+        <slot />
+      </main>
+      <Footer />
+    </div>
+    <Overlays withProgress={withProgress} />
+
+    <script>
+      import { initTheme } from '../scripts/theme';
+      import { initUI } from '../scripts/ui';
+      initTheme();
+      initUI();
+    </script>
+  </body>
+</html>

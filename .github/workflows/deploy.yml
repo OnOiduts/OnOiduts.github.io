@@ -1,0 +1,41 @@
+name: Deploy to GitHub Pages
+
+# 推代码自动部署；也能在 GitHub 网页的 Actions 里手动点一次
+on:
+  push:
+    # 本仓库当前默认分支是 master，GitHub 新建仓库通常是 main，两个都兼容
+    branches: [ main, master ]
+  workflow_dispatch:
+
+# 这三行是给 Pages 部署用的，少了 deploy 那步会没权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 防止两次部署叠在一起把站点写坏
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your repository using git
+        uses: actions/checkout@v5
+      - name: Install, build, and upload your site
+        # 官方 Astro Action：自动装依赖、跑 astro build、把 dist/ 传成 Pages 产物
+        # 项目就在仓库根目录，不用写 path；没有 lock 文件时它按 npm 装
+        uses: withastro/action@v5
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

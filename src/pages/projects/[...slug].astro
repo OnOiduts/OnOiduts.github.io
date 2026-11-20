@@ -1,0 +1,103 @@
+---
+/**
+ * 项目详情页：内容永远属于组织，作者永远「OnOiduts工业」。
+ * 有目录（有 H2 才显示）、上一个 / 下一个项目、以及返回项目总览的按钮。
+ */
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import TOC from '../../components/TOC.astro';
+import { fmtDate, countChars } from '../../utils/format';
+
+export async function getStaticPaths() {
+  const all = await getCollection('projects');
+  // 按创建时间升序，上一篇 = 更早立项，下一篇 = 更晚立项
+  const sorted = [...all].sort(
+    (a, b) => a.data.created.getTime() - b.data.created.getTime()
+  );
+  return all.map((entry) => {
+    const i = sorted.findIndex((x) => x.id === entry.id);
+    return {
+      params: { slug: entry.id },
+      props: {
+        entry,
+        prev: i > 0 ? sorted[i - 1] : null,
+        next: i < sorted.length - 1 ? sorted[i + 1] : null,
+      },
+    };
+  });
+}
+
+interface Props {
+  entry: CollectionEntry<'projects'>;
+  prev: CollectionEntry<'projects'> | null;
+  next: CollectionEntry<'projects'> | null;
+}
+const { entry, prev, next } = Astro.props;
+const { Content, headings } = await render(entry);
+const d = entry.data;
+const chars = countChars(entry.body ?? '');
+
+// 外链按钮组：终端风格，横排，位置由 frontmatter 的 linksPos 决定
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const linksHtml = d.links
+  .map((l) => `<a class="term-btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">&gt; ${esc(l.name)}_</a>`)
+  .join('');
+---
+
+<BaseLayout title={`${d.name} · OnOiduts工业`} description={d.summary} withProgress>
+  <div class="container page">
+    <TOC headings={headings} />
+
+    <article class="article">
+      <a class="back-link mono" href="/projects">&lt; 返回项目</a>
+
+      <h1 class="article-title">{d.name}</h1>
+
+      <div class="article-date mono">
+        {fmtDate(d.created)} · 更新于 {fmtDate(d.updated)}
+      </div>
+
+      <div class="card-tags article-tags">
+        {d.tags.map((t) => (
+          <a class="tag" href={`/projects?tag=${encodeURIComponent(t)}`}>{t}</a>
+        ))}
+      </div>
+
+      <div class="article-meta mono t-sm">
+        作者：OnOiduts工业 · {chars} 字
+      </div>
+
+      {linksHtml && d.linksPos === 'top' && <div class="proj-links" set:html={linksHtml} />}
+
+      <img class="cover article-cover" src={d.cover} alt="" />
+
+      <p class="article-excerpt">{d.summary}</p>
+
+      <div class="prose">
+        <Content />
+        {linksHtml && d.linksPos === 'inline' && <div class="proj-links" set:html={linksHtml} />}
+      </div>
+
+      {linksHtml && d.linksPos === 'bottom' && <div class="proj-links" set:html={linksHtml} />}
+
+      <nav class="prev-next">
+        <div class="pn-left">
+          {prev && (
+            <>
+              <div class="faint t-xs">上一个项目</div>
+              <a href={`/projects/${prev.id}`}>{prev.data.name}</a>
+            </>
+          )}
+        </div>
+        <div class="pn-right">
+          {next && (
+            <>
+              <div class="faint t-xs">下一个项目</div>
+              <a href={`/projects/${next.id}`}>{next.data.name}</a>
+            </>
+          )}
+        </div>
+      </nav>
+    </article>
+  </div>
+</BaseLayout>

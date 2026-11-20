@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
+  <rect width="640" height="360" fill="#0e0e12"/>
+  <g stroke="#2c5a85" stroke-width="1" opacity="0.25">
+    <path d="M0 60h640M0 120h640M0 180h640M0 240h640M0 300h640"/>
+    <path d="M80 0v360M160 0v360M240 0v360M320 0v360M400 0v360M480 0v360M560 0v360"/>
+  </g>
+  <rect x="24" y="24" width="592" height="312" fill="none" stroke="#2c5a85" stroke-width="3"/>
+  <text x="320" y="190" text-anchor="middle" font-family="monospace" font-size="44" font-weight="700" fill="#2c5a85" letter-spacing="6">ONOIDUTS</text>
+  <text x="320" y="228" text-anchor="middle" font-family="monospace" font-size="16" fill="#8a8a93" letter-spacing="3">COVER PLACEHOLDER</text>
+</svg>

@@ -1,0 +1,43 @@
+---
+/**
+ * 目录：左侧悬浮靠上；有 H2 才显示；H2 下面缩进显示 H3；
+ * 点击跳转、段落居中、临时高亮 1 秒；跟当前世界强调色。
+ * 移动端折叠成按钮放左上角，展开后半屏从左边滑出。
+ */
+import type { MarkdownHeading } from 'astro';
+
+interface Props {
+  headings: MarkdownHeading[];
+}
+const { headings } = Astro.props;
+
+// 只保留 H2 / H3，且必须存在 H2 才渲染
+const flat = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const hasH2 = flat.some((h) => h.depth === 2);
+const tree: { h: MarkdownHeading; children: MarkdownHeading[] }[] = [];
+for (const h of flat) {
+  if (h.depth === 2) tree.push({ h, children: [] });
+  else tree[tree.length - 1]?.children.push(h);
+}
+---
+
+{
+  hasH2 && (
+    <>
+      <button class="toc-toggle" id="toc-toggle" type="button">目录</button>
+      <aside class="toc" id="toc">
+        <div class="toc-title">目录</div>
+        {tree.map(({ h, children }) => (
+          <div>
+            <a href={`#${h.slug}`}>{h.text}</a>
+            {children.map((c) => (
+              <a class="h3" href={`#${c.slug}`}>
+                {c.text}
+              </a>
+            ))}
+          </div>
+        ))}
+      </aside>
+    </>
+  )
+}

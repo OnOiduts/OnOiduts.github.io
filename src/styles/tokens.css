@@ -1,0 +1,363 @@
+/* ============================================================
+   配色系统：两层变量
+   第一层 = 明暗基础（背景 / 文字 / 边框 / 网格）
+   第二层 = 世界强调（强调色 / 卡片底 / 链接色 / 动效色）
+   组合方式：世界 + 明暗 = 基础变量(明暗) + 强调变量(世界)
+   ============================================================ */
+
+:root {
+  /* ---- 第一层：明暗基础变量（默认日间） ----
+     ⚠️ 本轮：日间不是「把夜间亮度反转」，而是**另起一套浅色层次**：
+       · 页面底 --bg 偏冷灰蓝，作为「画布」
+       · 内容区 --glass-bg 近白，比页面底亮一档 → 面板浮起来的感觉
+       · 导航栏 / 页脚 --bar-bg 更亮一档，压住上下两端
+       三层亮度递进（页面 < 内容区 < 条），而不是同一块灰。
+     ⚠️ 冷色偏蓝（R<G<B）而不是纯中性灰：和三个世界的强调色（蓝/绿/紫）
+        都能搭，纯中性灰会让强调色显得脏。 */
+  --bg: #e9edf2;
+  --bg-elev: #ffffff;
+  --bg-sunken: #dde3ea;
+  --text: #131720;
+  --text-dim: #4a515e;
+  /* ⚠️ 日间次级文字必须自己够深：实测 #767e8c 压在内容区上只有 3.90:1，
+     低于 WCAG AA 的 4.5。改成 #666e7c 后是 4.97:1。
+     （夜间因为底是纯黑，同样色阶的灰反而有 6:1 以上，所以只有日间要改。） */
+  --text-faint: #666e7c;
+  --border: #d3dae3;
+  --border-strong: #aeb7c4;
+  /* 网格线 = 当前世界强调色（不是黑/白），两层浓度不同：
+     主层明显、次层淡，叠起来才有「战斗背景」的层次感。
+     用 color-mix 混 transparent 得到 alpha，所以会跟着世界切换变色。 */
+  /* 日间网格线比夜间淡一档：浅底上同样浓度会显得脏、抢内容 */
+  --grid-line: color-mix(in srgb, var(--accent) 30%, transparent);
+  --grid-line-2: color-mix(in srgb, var(--accent) 13%, transparent);
+  /* 中等格子（64px）：40px 太密、84px 太疏，取中间。两层一样大。 */
+  --grid-size: 64px;
+  /* 速度：中等（本轮从「快」调回来）。
+     一个周期走 4 个格子 = 256px；9s / 12s → 约 28 / 21 px/s。
+     对照：之前 4.5s/6.5s ≈ 57/39 px/s 偏快，18s/25s ≈ 14/10 px/s 又慢到看不出来。 */
+  --grid-drift-dur: 9s;
+  --grid-drift-dur-2: 12s;
+  --scan-dur: 9s;
+  /* 卡片比内容区再亮一档（纯白 88%），才有「卡片浮在面板上」的层次 */
+  --card-bg: rgba(255, 255, 255, 0.88);
+  /* 代码块刻意保留深色：浅底上的深色代码块是常见且好看的设计，
+     不是「忘了反过来」—— 日间文字色也是按深底配的。 */
+  --code-bg: #21252d;
+  --selection: rgba(0, 0, 0, 0.10);
+
+  /* SVG-A 的墨色：纯黑 / 纯白，只跟明暗，不跟世界 */
+  --svg-ink: #0a0a0a;
+
+  /* ---- 毛玻璃 ----
+     图层顺序（重要）：网格(最底) → 毛玻璃(模糊网格) → 板块背景 → 内容。
+     毛玻璃只模糊网格，不模糊板块背景和内容 —— 所以毛玻璃层必须独立，
+     且要带与板块背景同形状同羽化的 mask（否则整块矩形都会糊，边界很生硬）。
+     ⚠️ backdrop-filter 和 transform/filter 一样会创建「包含块」，
+        让后代的 position: fixed 失效。所以只能给**叶子级**块加，
+        绝不能加在 #app / .container / .page / .page-body 上
+        （它们里面有 .toc 和 .mobile-panel 两个 fixed 元素）。 */
+  /* ⚠️ 本轮：去掉毛玻璃（不再用 backdrop-filter: blur）。
+     现在是**一整块深黑半透明底**，网格直接透过来（不是被模糊）。
+     --glass-blur 保留为 0，方便需要时开回来。 */
+  --glass-blur: 0px;
+  /* 羽化宽度：上下边缘渐变淡出的距离 */
+  --glass-feather: 48px;
+  /* 左右羽化：本轮要求「内容区左右边缘淡出到透明，和屏幕边缘自然过渡」。
+
+     ⚠️ 必须用 min() 夹住上限：羽化 = 背景块向外**外扩**的宽度，
+     外扩超过「内容区到屏幕边缘的留白」就会把文档撑宽 —— 实测窄屏
+     scrollWidth 441 > clientWidth 420，多出的 21px 正是这么来的
+     （420 视口下留白只有 21px，而羽化写了 42px）。
+
+     桌面段：内容区 = 75% 宽（上限 1200px），单侧留白 ≈ 12.5vw，
+             取 min(120px, 12.5vw) —— 1440 下是 120（留白 180，够）；
+             901 下自动降到 112（留白也只有 112）。
+
+     ⚠️ 本轮再往外移：羽化带 = [内容区边缘 - gx, 内容区边缘]。
+        120px 时是 [60, 180]，离屏幕边还空 60px 纯透明，偏内；
+        改成 12vw（1440 下 172.8px）后是 [7, 180]，几乎贴到屏幕边缘。 */
+  --glass-feather-x: min(170px, 12vw);
+  /* ⚠️ 本轮：导航栏 / 页脚**不要羽化**（要和深黑底连成一整块），
+     这个变量已不再使用，保留仅为需要时开回来。 */
+  --glass-feather-bar: 0px;
+  /* 日间：**85% 不透明**，颜色取近白 —— 日间正文是深色，
+     若用深黑（rgba(0,0,0,.85)）深色文字会完全看不见（对比度掉到 1:1 量级）。
+     「跟明暗模式协调」= 夜间深黑、日间近白，不透明度都落在 80~90%。 */
+  /* ⚠️ 本轮：白偏一点灰 + 90% 不透明，**不跟强调色走**（原来是混 4% accent）。
+     日间必须走浅色版：正文是深色，深底会让正文看不见（对比度掉到 1:1 量级）。
+     「跟明暗模式协调」= 夜间黑偏灰、日间白偏灰，不透明度都是 90%。 */
+  --glass-bg: rgba(249, 251, 253, 0.9);
+  /* 导航栏 / 页脚：**纯色 100% 不透明**（本轮要求），同样不跟强调色走。
+     和 --glass-bg 分开是有意的：两条要 100% 不透明，内容区只要 90%（透出网格）。 */
+  --bar-bg: #fbfcfe;
+
+  /* 发光强度：日间弱、夜间强 */
+  --glow: 0.34;
+  --glow-blur: 11px;
+  /* 悬停时的强发光：明显强于静态发光，才有「点亮」的手感 */
+  --glow-blur-strong: 24px;
+  /* 故障分离用的两个色：洋红 / 青，和任何强调色都撞得开 */
+  --glitch-a: rgba(255, 40, 160, .55);
+  --glitch-b: rgba(40, 220, 255, .55);
+  --glow-spread: 0px;
+
+  /* 明暗切换过渡时长 */
+  --t-theme: 0.3s;
+
+  /* ---- 尺寸 / 排版 ---- */
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: 'Inter', 'Source Han Sans SC', 'Noto Sans SC', system-ui, sans-serif;
+
+  /* 字号：H1 30 / H2 24 / H3 20 / 正文 16 / 小字 14 / 微字 12。
+     层级差 6 / 4 / 4 / 2 / 2px，整体收得更紧。
+     行高 1.72：字号越小越要松，否则密排会糊成一片。 */
+  --fs-h1: 30px;
+  --fs-h2: 24px;
+  --fs-h3: 20px;
+  --fs-body: 16px;
+  --fs-sm: 14px;
+  --fs-xs: 12px;
+
+  --lh-body: 1.72;
+  --lh-head: 1.34;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 18px;
+  --sp-5: 24px;
+  --sp-6: 36px;
+
+  --content-w: 75%;
+  --content-max: 1200px;
+  --nav-w: 88%;
+  /* 字号回缩一档，导航栏跟着 72 → 68 → 64 → 60，保持上下留白比例 */
+  --nav-h: 60px;
+  /* 网格格子：中等方格（64px），两层一样大 */
+  --grid-size: 64px;
+
+  --radius: 10px;
+
+  /* 深色底上的强调色，供演职人员表等「坐在深色光斑上」的地方用。
+     下面每个世界会把这个值覆盖成该世界的亮色版。 */
+  --accent-on-dark: #9dc2e8;
+
+  /* 友情链接星云：= 底 + 当前世界强调色。
+     夜间是黑底（组织黑蓝 / 波萝黑绿 / 孜岚黑紫，各自的世界色都要看得出来）；
+     日间是白底 + 强调色的浅调。
+     外层再混一层 transparent 是为了给中心一个 alpha —— 要够实才看得见，
+     但不能是实心色块（边缘要淡出）。 */
+  --friend-bg: color-mix(in srgb, color-mix(in srgb, var(--accent) 34%, #ffffff) 90%, transparent);
+  /* 装饰配色：日间云朵偏白、太阳偏暖 */
+  --deco-small: #ffffff;
+  --deco-big: #ffcf5c;
+
+  /* tooltip 底色：日间用近白的浅底（深色文字要看得清） */
+  --tip-bg: rgba(255, 255, 255, 0.98);
+
+  /* 便签纸：正文插图像随手贴的纸片。
+     日间用暖白；夜间刻意压暗成米色 —— 真实便签在暗环境下也不会发光，
+     纯白 (#fff) 在纯黑页面上会刺眼。 */
+  --note-bg: #fffdf4;
+  --note-shadow: 0 10px 22px rgba(0, 0, 0, .16), 0 2px 6px rgba(0, 0, 0, .10);
+  --note-shadow-hover: 0 16px 34px rgba(0, 0, 0, .22), 0 2px 6px rgba(0, 0, 0, .14);
+  /* 相册：舞台底色比内容区再暗一档，让图片自己浮出来 */
+  --gallery-bg: color-mix(in srgb, var(--bg) 88%, #000000);
+
+  /* 演职人员表：日间 = 浅灰光斑 + 深色文字。
+     以前日间也用黑斑，压在 #f2f2f4 上就是一块脏印子；
+     而白字配浅灰底又等于隐形，所以文字色也要一起换，不能写死。 */
+  /* ⚠️ 本轮：日间**必须跟明暗走**，不能和夜间同色。
+     夜间是「纯黑光斑 + 亮字」；日间反过来做成「极淡的深色晕 + 深字」——
+     在近白的内容区上压一层约 16% 的冷灰，读起来就是一块柔和的光斑，
+     而不是夜间那种「挖个洞」。alpha 只有 0.16：再高就成了脏印子。 */
+  --credits-rgb: 22, 27, 36;
+  --credits-a: 0.16;
+  /* 文字跟着底走：日间深字（--accent-text 是深色版强调色） */
+  --credits-k: rgba(19, 23, 32, 0.62);
+  --credits-v: #1b2029;
+  --credits-link: var(--accent-text);
+}
+
+/* ---- 第一层：夜间基础 ---- */
+:root[data-theme='dark'] {
+  /* 网格背景：纯黑。两层强调色网格线在纯黑底上才「发光」 */
+  --bg: #000000;
+  --bg-elev: #101014;
+  --bg-sunken: #050507;
+  --text: #e6e6ea;
+  --text-dim: #a2a2ac;
+  --text-faint: #6d6d77;
+  --border: #2a2a31;
+  --border-strong: #3d3d47;
+  --grid-line: color-mix(in srgb, var(--accent) 46%, transparent);
+  --grid-line-2: color-mix(in srgb, var(--accent) 20%, transparent);
+  /* 夜间同样中等速度，两层互不相同 */
+  --grid-drift-dur: 9s;
+  --grid-drift-dur-2: 12s;
+  --scan-dur: 7s;
+  --card-bg: rgba(20, 20, 26, 0.66);
+  --code-bg: #131318;
+  --selection: rgba(255, 255, 255, 0.16);
+  --svg-ink: #ffffff;
+
+  /* ⚠️ 本轮：三处背景**再往黑调一档** —— #101114(16,17,20) → #0a0a0c(10,10,12)，
+     落在用户给的范围 #0a0a0a~#111 内，**不是纯黑**（保留极淡的灰，避免死黑一片）。
+     不透明度不变：条 100%、内容区 90%（剩 10% 让网格透出来）。
+     ⚠️ 明暗两份必须**分别**定义：只写在 :root 的话夜间会继承浅色值，
+        变成一块灰白的板（上一轮就是这个 bug）。 */
+  --glass-bg: rgba(10, 10, 12, 0.9);
+  --bar-bg: #0a0a0c;
+
+  --glow: 1;
+  --glow-blur: 20px;
+  --glow-blur-strong: 40px;
+  --glitch-a: rgba(255, 40, 160, .65);
+  --glitch-b: rgba(40, 220, 255, .65);
+  --glow-spread: 1px;
+
+  /* 友情链接星云：夜间 = 黑蓝。
+     两步混色是关键 —— 直接把 accent 混进深底，孜岚（紫 #c77bff）会把整块带紫
+     （实测 rgb(45,33,72)，r 明显大于 g 就是紫）。
+     所以先让 accent 和一个钴蓝 #0b2a5e 混一次「去紫」，再混进近黑的深蓝底：
+       组织 rgb(14,29,58) / 波萝 rgb(16,38,48) / 孜岚 rgb(23,27,63)
+     三个都是 b > g > r，孜岚也只是 r 略小于 g，不偏紫。 */
+  --friend-bg: color-mix(in srgb,
+      color-mix(in srgb, var(--accent) 42%, #04060c) 86%,
+      transparent);
+  /* 装饰配色：夜间星星偏白、月亮偏暖黄 */
+  --deco-small: #ffffff;
+  --deco-big: #ffe6a3;
+
+  /* tooltip 底色：夜间用近黑的深底 */
+  --tip-bg: rgba(8, 10, 14, 0.97);
+
+  /* 便签纸：夜间压成米色（不是纯白），避免在纯黑页面上刺眼 */
+  --note-bg: #ece5d5;
+  --note-shadow: 0 12px 26px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .40);
+  --note-shadow-hover: 0 18px 40px rgba(0, 0, 0, .68), 0 2px 6px rgba(0, 0, 0, .45);
+  --gallery-bg: color-mix(in srgb, var(--bg) 88%, #ffffff);
+
+  /* 演职人员表：夜间 = 黑色光斑 + 亮色文字 */
+  /* ⚠️ 夜间背景本轮改成了纯黑（#000），原来这块「黑色光斑」压在纯黑底上
+     等于完全消失（实测有/无背景两张截图中心都是 (0,0,0)，差分 alpha=0）。
+     所以改成「黑 + 当前世界强调色」—— 和友链星云同一套语言，
+     在纯黑底上仍然看得见，且跟着世界变。 */
+  /* ⚠️ 网站搭建 = **中性黑**，不带世界色（和友链「黑 + 强调色」区分开）。
+     但页面背景本轮已是纯黑 #000，光斑再写纯黑就等于完全没有 ——
+     所以用一层极淡的**白**叠出中性深灰（rgb 约 18,18,18）：
+     既是「纯黑色、不带颜色」的中性观感，又在纯黑底上看得见。
+     日间同理走中性灰（原来是 rgba(18,22,32) 略偏蓝，改成纯中性）。 */
+  /* ⚠️ 本轮：从「极淡白雾」改成**纯黑 #000 不透明**。
+     上一版用白色叠加是因为页面底已是纯黑、再写纯黑就看不见；
+     但现在内容区有 90% 的深黑底（能透出一点网格），
+     这里用 100% 纯黑就会把网格完全遮住 —— 反而比周围更暗，能看出边界，
+     同时也满足「纯黑、不带任何颜色」。 */
+  /* 夜间：纯黑光斑（--credits-rgb = 0,0,0）+ 亮字。
+     和日间（淡冷灰晕 + 深字）形成两套，跟着明暗切换。 */
+  --credits-rgb: 0, 0, 0;
+  --credits-a: 1;
+  --credits-k: rgba(255, 255, 255, 0.62);
+  --credits-v: #eeeeF2;
+  --credits-link: var(--accent-on-dark);
+}
+
+/* ⚠️ 本轮：「网站搭建」的形状与羽化统一到一处定义，三个使用者
+   （深黑衬底 ::before 的 mask、板块背景 ::after、内容的 .credits-view mask）
+   全部引用它 —— 之前三者是三份各写各的渐变，形状还不一样
+   （背景 Rx=40% 而文字 mask Rx=80%），羽化自然对不齐。
+
+   曲线用 smoothstep（1 − t²(3−2t)），和内容区左右羽化同一套语言：
+   线性渐变两端一阶导数不为 0，会出现看得见的「开始/停止变化」拐点。
+   实色核心到 36%，之后分 10 段平滑降到 100% 处全透明。
+
+   Ry = 150px 正好等于容器半高 → 上下边缘处 alpha 恰为 0，
+   循环衔接看不到接缝。Rx = 56%×宽（约 604px），内容最宽只到 ±164px
+   （t≈0.27 < 0.36），稳稳落在实色核心内，边缘文字不会被淡掉。 */
+:root {
+  /* 颜色由 --credits-rgb / --credits-a 提供（明暗各一套），
+     色标位置由 --credits-mask 那套 smoothstep 提供 —— 两者拼在一起，
+     保证「形状羽化」和「颜色浓度」用的是同一条曲线。
+     ⚠️ 这里只写一次，不在明暗块里各写一份：var() 是在**使用处**才展开的，
+        所以 .credits::after 上展开时取到的是当前主题的 --credits-rgb。 */
+  --credits-bg: radial-gradient(var(--credits-shape),
+      rgba(var(--credits-rgb), var(--credits-a)) 0%,
+      rgba(var(--credits-rgb), var(--credits-a)) 36%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.972)) 42.4%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.896)) 48.8%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.784)) 55.2%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.648)) 61.6%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.500)) 68.0%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.352)) 74.4%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.216)) 80.8%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.104)) 87.2%,
+      rgba(var(--credits-rgb), calc(var(--credits-a) * 0.028)) 93.6%,
+      rgba(var(--credits-rgb), 0) 100%);
+  --credits-shape: ellipse 56% 150px at 50% 50%;
+  --credits-mask: radial-gradient(var(--credits-shape),
+      #000 0%, #000 36%,
+      rgba(0,0,0,0.972) 42.4%,
+      rgba(0,0,0,0.896) 48.8%,
+      rgba(0,0,0,0.784) 55.2%,
+      rgba(0,0,0,0.648) 61.6%,
+      rgba(0,0,0,0.500) 68.0%,
+      rgba(0,0,0,0.352) 74.4%,
+      rgba(0,0,0,0.216) 80.8%,
+      rgba(0,0,0,0.104) 87.2%,
+      rgba(0,0,0,0.028) 93.6%,
+      rgba(0,0,0,0) 100%);
+}
+
+/* ============================================================
+   第二层：世界强调变量
+   日间用深色版，夜间用荧光 / 霓虹版
+   ============================================================ */
+
+/* 世界 0 · 组织 —— 工业、冷峻、秩序 */
+:root[data-theme='light'][data-world='org'] {
+  --accent: #2c5a85;
+  --accent-soft: rgba(44, 90, 133, 0.14);
+  --accent-faint: rgba(44, 90, 133, 0.07);
+  --accent-text: #1d3f60;
+  --accent-on-dark: #9dc2e8;
+}
+:root[data-theme='dark'][data-world='org'] {
+  --accent: #5b8fc7;
+  --accent-soft: rgba(91, 143, 199, 0.18);
+  --accent-faint: rgba(91, 143, 199, 0.08);
+  --accent-text: #9dc2e8;
+  --accent-on-dark: #9dc2e8;
+}
+
+/* 世界 1 · 波萝Buono —— 活跃、赛博、发光 */
+:root[data-theme='light'][data-world='buono'] {
+  --accent: #2f7a1c;
+  --accent-soft: rgba(47, 122, 28, 0.14);
+  --accent-faint: rgba(47, 122, 28, 0.07);
+  --accent-text: #215c13;
+  --accent-on-dark: #b6ffa0;
+}
+:root[data-theme='dark'][data-world='buono'] {
+  --accent: #7cff4f;
+  --accent-soft: rgba(124, 255, 79, 0.18);
+  --accent-faint: rgba(124, 255, 79, 0.08);
+  --accent-text: #b6ffa0;
+  --accent-on-dark: #b6ffa0;
+}
+
+/* 世界 2 · 孜岚 —— 虚拟、夜色、发光 */
+:root[data-theme='light'][data-world='zilan'] {
+  --accent: #7139a3;
+  --accent-soft: rgba(113, 57, 163, 0.14);
+  --accent-faint: rgba(113, 57, 163, 0.07);
+  --accent-text: #552a7c;
+  --accent-on-dark: #dfb8ff;
+}
+:root[data-theme='dark'][data-world='zilan'] {
+  --accent: #c77bff;
+  --accent-soft: rgba(199, 123, 255, 0.18);
+  --accent-faint: rgba(199, 123, 255, 0.08);
+  --accent-text: #dfb8ff;
+  --accent-on-dark: #dfb8ff;
+}

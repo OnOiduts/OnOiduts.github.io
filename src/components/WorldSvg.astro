@@ -1,0 +1,69 @@
+---
+/**
+ * 关于页 SVG：每个世界一个。内联（?raw 导入）。
+ * 颜色保持原稿不动，只发当前世界强调色的光。漂浮同 B，纯装饰不可点。
+ *
+ * 组织（世界 0）关于页用的是 B —— 与文档「B 出现在首页 / 组织关于页」一致。
+ *
+ * 尺寸：容器固定，内部 svg 撑满 100%。
+ *   default  260 × 260
+ *   hero     屏占比约 50%（max-width 600px，高度不超过 50vh）
+ */
+import type { WorldId } from '../data/identities';
+import onoidutsRaw from '../assets/svg/onoiduts.svg?raw';
+import blRaw from '../assets/svg/bl.svg?raw';
+import zlRaw from '../assets/svg/zl.svg?raw';
+import { normalizeSvg } from '../utils/svg';
+
+const SRC: Record<WorldId, string> = {
+  org: normalizeSvg(onoidutsRaw),
+  buono: normalizeSvg(blRaw),
+  zilan: normalizeSvg(zlRaw),
+};
+
+interface Props {
+  world: WorldId;
+  variant?: 'default' | 'hero';
+}
+const { world, variant = 'default' } = Astro.props;
+---
+
+<div
+  class:list={['world-svg-wrap', `is-${variant}`, 'float-anim']}
+  data-world-svg={world}
+  aria-hidden="true"
+>
+  <Fragment set:html={SRC[world]} />
+</div>
+
+<style>
+  /* 容器固定尺寸，内部 svg 撑满 —— 原稿尺寸再大也不撑爆 */
+  .world-svg-wrap {
+    width: 260px;
+    height: 260px;
+    max-width: 100%;
+    margin: 0 auto;
+    pointer-events: none;
+    filter: drop-shadow(0 0 var(--glow-blur) var(--accent));
+    transition: filter var(--t-theme) ease;
+  }
+
+  /* 关于页右侧大图：屏占比约 50%，上限 600px */
+  .is-hero {
+    width: 100%;
+    max-width: 600px;
+    height: 50vh;
+  }
+
+  .world-svg-wrap :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  @media (max-width: 900px) {
+    .world-svg-wrap.is-default { width: 220px; height: 220px; }
+    .is-hero { height: 40vh; max-width: 100%; }
+  }
+</style>

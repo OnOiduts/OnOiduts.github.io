@@ -1,0 +1,25 @@
+---
+/** 项目页：搜索框 + 标签 + 时间线；内容不分世界，只变色。 */
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProjectExplorer from '../../components/ProjectExplorer';
+
+const projectList = (await getCollection('projects')).map((p) => ({
+  slug: p.id,
+  name: p.data.name,
+  cover: p.data.cover,
+  created: p.data.created.toISOString(),
+  updated: p.data.updated.toISOString(),
+  tags: p.data.tags,
+  summary: p.data.summary,
+  featured: p.data.featured,
+  url: `/projects/${p.id}`,
+}));
+---
+
+<BaseLayout title="项目 · OnOiduts工业">
+  <div class="container page">
+    <h1 class="page-title">项目</h1>
+    <ProjectExplorer client:load projects={projectList} />
+  </div>
+</BaseLayout>

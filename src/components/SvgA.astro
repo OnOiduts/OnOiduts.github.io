@@ -1,0 +1,78 @@
+---
+/**
+ * SVG-A：导航栏 Logo。
+ * 内联（?raw 导入）—— CSS 才进得去 SVG 内部，才能控制颜色。
+ * 纯黑 / 纯白，只跟明暗（--svg-ink），不跟世界；但发当前世界强调色的光。
+ * 点击回首页，不切世界。
+ *
+ * 尺寸：容器固定 132 × 26，内部 svg 撑满 100%。
+ * 原稿带写死宽高或缺 viewBox 都能处理（见 utils/svg.ts 的 normalizeSvg）。
+ */
+import logoRaw from '../assets/svg/logo.svg?raw';
+import { normalizeSvg } from '../utils/svg';
+
+interface Props {
+  class?: string;
+}
+const { class: cls = '' } = Astro.props;
+const svg = normalizeSvg(logoRaw);
+---
+
+<a href="/" class:list={['nav-logo', cls]} aria-label="回到首页">
+  <span class="svg-a">
+    <Fragment set:html={svg} />
+  </span>
+</a>
+
+<style>
+  .nav-logo { display: flex; align-items: center; }
+
+  /* 容器固定尺寸 —— 原稿多大多小都不会撑爆。
+     高度 34px：导航栏 60px 高，上下各留 13px，不顶边也不撑破导航栏。
+     宽度按原稿 5:1 左右的横长比例取 160px，内部 contain 等比缩放不变形。 */
+  .svg-a {
+    display: block;
+    width: 160px;
+    height: 34px;
+    flex: none;
+    /* 发光放在外层：滤镜之后再算 drop-shadow，光才不会被形状裁掉 */
+    filter: drop-shadow(0 0 calc(var(--glow-blur) * 0.7) var(--accent));
+    transition: filter var(--t-theme) ease, transform .22s cubic-bezier(.34, 1.4, .64, 1);
+    /* 悬停倾斜 + 放大：绕中心，不然会以左上角为原点甩出去 */
+    transform-origin: center;
+  }
+
+  /* 悬停：倾斜 + 放大；移开由上面的 transition 平滑还原。
+     hover 挂在 <a> 上（.nav-logo）而不是 .svg-a 本身 —— 链接的可点区域更大，
+     鼠标在 Logo 边缘也不会「抖」。 */
+  .nav-logo:hover .svg-a,
+  .nav-logo:focus-visible .svg-a {
+    transform: rotate(-7deg) scale(1.14);
+  }
+
+  /* 内部 svg 撑满容器，靠 preserveAspectRatio 等比缩放、居中不变形 */
+  .svg-a :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* 不管原稿写的是什么颜色，A 一律走 --svg-ink（只跟明暗） */
+  .svg-a :global(svg) :global(*) {
+    fill: var(--svg-ink);
+    transition: fill var(--t-theme) ease;
+  }
+  /* 描边型原稿：跟着换色，但不给没有描边的元素硬加描边 */
+  .svg-a :global(svg) :global([stroke]:not([stroke='none'])) {
+    stroke: var(--svg-ink);
+  }
+
+  @media (max-width: 900px) {
+    /* 窄屏导航栏矮一些，Logo 相应缩小，避免挤到汉堡按钮 */
+    .svg-a { width: 128px; height: 28px; }
+  }
+  @media (max-width: 420px) {
+    .svg-a { width: 108px; height: 24px; }
+  }
+</style>

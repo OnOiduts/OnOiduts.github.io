@@ -1,0 +1,108 @@
+---
+/**
+ * SVG-B：首页 / 组织关于页。
+ * 内联（?raw 导入）—— CSS 才进得去内部，才能控制颜色。
+ *
+ * 双色规则：黑色部分 → 当前世界强调色；白色部分 → 永远白色。
+ * 分色由 JS 在运行时按「实测到的颜色」判定并打 class（见 ui.ts 的 inkSvgB），
+ * 而不是靠 CSS 猜 fill 属性值 —— 原稿可能用 style="fill:#000"、#231f20、
+ * 或者干脆不写颜色靠继承，属性选择器都抓不全，而内联样式还会盖过 CSS。
+ *
+ * 尺寸：容器固定 240 × 240，内部 svg 撑满 100%。
+ * 上下左右漂浮 + 倾斜 ±5°；首页可点（1 秒整体形变后回组织），关于页不可点。
+ */
+import onoidutsRaw from '../assets/svg/onoiduts.svg?raw';
+import { normalizeSvg } from '../utils/svg';
+
+interface Props {
+  interactive?: boolean;
+  class?: string;
+  /** hero：首页上半部分用，填满右侧那一列（约 42% 宽），与左侧文字视觉平衡 */
+  variant?: 'default' | 'hero';
+}
+const { interactive = true, class: cls = '', variant = 'default' } = Astro.props;
+const svg = normalizeSvg(onoidutsRaw);
+---
+
+<div
+  class:list={['b-wrap', variant === 'hero' && 'is-hero', 'float-anim', cls]}
+  {...(interactive ? { 'data-b-action': true } : {})}
+>
+  <span class="svg-b">
+    <Fragment set:html={svg} />
+  </span>
+</div>
+
+<style>
+  /* 容器固定尺寸，原稿尺寸再大也不会撑爆。
+     hero 变体给首页上半部分用：填满右侧那一列（约 42% 宽），
+     与左侧文字块视觉平衡 —— 原来的 240px 比文字还窄，失衡。
+     aspect-ratio 保证正方形，高度跟随宽度，不会撑破 hero 的 max-height。 */
+  .b-wrap {
+    width: 240px;
+    height: 240px;
+    max-width: 100%;
+    margin: 0 auto;
+    cursor: default;
+  }
+  .b-wrap.is-hero {
+    /* 上限 380px：上半部分往里收后右栏约 457px，留 380 让 B 在栏里居中
+       （左右余量各约 38px），而不是撑满整栏 —— 撑满就没有「居中」了。
+       min() 保证窗口再窄也不会溢出栏宽。 */
+    width: min(100%, 380px);
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
+  .b-wrap[data-b-action] { cursor: pointer; }
+
+  .svg-b {
+    display: block;
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 var(--glow-blur) var(--accent));
+    transition: filter var(--t-theme) ease;
+  }
+  .svg-b :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* 点击：各部件向四周飞散 + 渐隐，再飞回来拼回原样 + 渐入。总时长 1 秒。
+
+     方向/距离/旋转由 JS 按部件相对 SVG 中心的位置算好写进 --ox / --oy / --rot
+     （见 ui.ts 的 prepareBShatter），所以不管原稿有多少个部件、什么结构都适用。
+
+     --d 是错开用的延迟；动画时长写成 calc(1000ms - var(--d)) 是故意的 ——
+     延迟 + 时长恒等于 1000ms，所有部件都在同一时刻收尾，
+     JS 那边才好用一个 animationend 解锁（不然先动的部件会先结束）。 */
+  /* :global(.b-part) 是必须的 —— .b-part 这个 class 由 JS 在运行时加到 SVG 内部元素上，
+     而 SVG 是通过 set:html 注入的，注入的 children 不会带 Astro 的 scope 属性
+     （data-astro-cid-*）。不加 :global 的话选择器会变成 .b-part[data-astro-cid-*]，
+     永远匹配不上，动画直接不跑。 */
+  .b-wrap.b-shatter :global(.b-part) {
+    animation-name: b-scatter;
+    animation-duration: calc(1000ms - var(--d, 0ms));
+    animation-delay: var(--d, 0ms);
+    animation-timing-function: cubic-bezier(.34, .1, .28, 1);
+    animation-fill-mode: both;
+    /* 让旋转绕部件自己的中心，而不是 SVG 原点 */
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  @keyframes b-scatter {
+    /* var(--base) 是部件静止时的 transform（可能来自 SVG 的 transform 属性）。
+       CSS transform 会整个盖掉那个属性，不拼回去的话动画一开始部件就会跳位。 */
+    0%   { transform: var(--base) translate(0, 0) rotate(0deg); opacity: 1; }
+    42%  { transform: var(--base) translate(calc(var(--ox) * 1px), calc(var(--oy) * 1px)) rotate(var(--rot)); opacity: 0; }
+    58%  { transform: var(--base) translate(calc(var(--ox) * 1px), calc(var(--oy) * 1px)) rotate(var(--rot)); opacity: 0; }
+    100% { transform: var(--base) translate(0, 0) rotate(0deg); opacity: 1; }
+  }
+
+  @media (max-width: 900px) {
+    .b-wrap { width: 200px; height: 200px; }
+    .b-wrap.is-hero { width: min(100%, 260px); height: auto; }
+  }
+</style>

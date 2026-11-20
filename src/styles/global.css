@@ -1,0 +1,2398 @@
+@import './tokens.css';
+
+/* ============ Reset ============ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--nav-h) + 16px);
+  /* ⚠️ 本轮：滚动条**始终留位置**。
+     没有这条时，页面从「内容不够高」变成「够高」会突然冒出滚动条，
+     可视宽度瞬间变窄 → 所有居中内容横向跳一下（实测抖动约 15px）。
+     scrollbar-gutter: stable 让 gutter 一直存在（无论有没有滚动条），
+     于是出现/消失都不改变内容宽度，不再抽动。 */
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  /* ⚠️ 本轮：内容区背景块会向左右各外扩约 1.3 倍留白（为了拉长羽化过渡带），
+     超出视口的部分必须裁掉，否则会撑出横向滚动条（实测 scrollWidth 会超过 clientWidth）。
+     用 clip 而不是 hidden：hidden 会创建滚动容器（纵向也被接管），
+     clip 只裁剪、不产生滚动，且**不创建包含块**（不像 transform/filter），
+     所以 .toc / .mobile-panel 的 position: fixed 不受影响。 */
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 400;
+  cursor: default;
+  transition: background-color var(--t-theme) ease, color var(--t-theme) ease;
+}
+
+/* ============ 全站网格背景：双层，交错，缓慢移动 ============
+   第一层（body::before）：正交网格，横竖方格，缓慢向下 + 向右漂移
+   第二层（body::after）：斜网格，45° / -45° 交错成菱形，反向漂移
+   两层速度不同、方向不同，叠加出「三角符文战斗背景」那种错位流动感。
+
+   ⚠️ 两层都是 position: fixed + inset: -50%（比视口大一圈）——
+   移动时边缘才不会露出空档。移动靠 translate 而不是 background-position：
+   transform 走 GPU，不会每帧重绘整张渐变。
+
+   ⚠️ 网格是 z-index: 0 的底层，正文要 z-index ≥ 1 才压得住它。
+   #app / .nav 已经有 position + z-index，不受影响。 */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: -50%;
+  z-index: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+/* 两层都是横竖方格（不是斜网格），线色 = 当前世界强调色。
+   主层线更浓（--grid-line），次层更淡（--grid-line-2）且格子更大 ——
+   「一层比另一层明显」靠的是浓度差 + 格子尺寸差，两者叠出层次。
+   参考三角符文战斗背景：深色底 + 发光的方格网，缓慢反向漂移。 */
+body::before {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  animation: grid-drift-a var(--grid-drift-dur) linear infinite;
+}
+body::after {
+  /* 次层：格子**一样大**（和主层同尺寸），只是线更淡 ——
+     「一层比另一层明显」靠浓度差，不靠尺寸差。 */
+  background-image:
+    linear-gradient(to right, var(--grid-line-2) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line-2) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  animation: grid-drift-b var(--grid-drift-dur-2) linear infinite;
+}
+
+/* ⚠️ 位移 = 整数个格子（这里是 4 格），循环时才看不出接缝。
+   但「整数格」只是**无缝**的条件，不是速度 ——
+   只走 1 格的话，40px / 4.5s ≈ 9px/s，视觉上几乎察觉不到（用户反馈「不动了」）。
+   所以一个周期走 4 个格子：160px / 4.5s ≈ 36px/s，明显在流动。
+   方向：一层往左上（-size, -size），另一层往右下（+size, +size）。 */
+@keyframes grid-drift-a {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(calc(var(--grid-size) * -4), calc(var(--grid-size) * -4), 0); }
+}
+@keyframes grid-drift-b {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(calc(var(--grid-size) * 4), calc(var(--grid-size) * 4), 0); }
+}
+
+/* 尊重「减少动态效果」的系统设置 */
+@media (prefers-reduced-motion: reduce) {
+  body::before, body::after { animation: none; }
+}
+
+::selection { background: var(--accent-soft); color: var(--text); }
+
+/* 滚动条：6px，发光，跟强调色 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 3px;
+  box-shadow: 0 0 var(--glow-blur) var(--accent);
+}
+html { scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
+
+h1, h2, h3, h4 { font-weight: 600; line-height: var(--lh-head); margin: 0; }
+/* 关键元素①：标题发光。
+   常驻一层柔光（--glow-blur 的 0.7 倍），悬停时跳到强发光。
+   只给页面级标题（页面大标题 / 板块标题 / 文章标题），
+   卡片标题不加 —— 18 张卡片同时发光会糊成一片。 */
+.page-title, .article-title, .sec-head > h2, .sec-head > .sec-title {
+  text-shadow: 0 0 calc(var(--glow-blur) * 0.7) var(--accent-soft);
+  transition: text-shadow .25s ease;
+}
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); }
+p { margin: 0 0 var(--sp-3); }
+a { color: var(--accent-text); text-decoration: none; transition: color .2s ease, text-shadow .2s ease; }
+a:hover { text-shadow: 0 0 var(--glow-blur-strong) var(--accent); }
+strong { font-weight: 600; }
+hr { border: 0; border-top: 1px solid var(--border); margin: var(--sp-5) 0; }
+
+.mono { font-family: var(--font-mono); }
+.t-xs { font-size: var(--fs-xs); }
+.t-sm { font-size: var(--fs-sm); }
+.dim { color: var(--text-dim); }
+.faint { color: var(--text-faint); }
+
+/* ============ 布局 ============ */
+#app { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 100vh; }
+main {
+  flex: 1;
+  /* ⚠️ 本轮：内容区背景块向左右各外扩约 1.3 倍留白，超出视口的部分必须裁掉，
+     否则会一路传播到 html，撑出横向滚动条（实测 scrollWidth 1483 > clientWidth 1440）。
+
+     用 clip 而不是 hidden：hidden 会创建滚动容器（纵向也被接管），
+     clip 只裁剪、不产生滚动。而且 clip **不创建包含块**（不像 transform / filter
+     / backdrop-filter），所以 .toc 的 position: fixed 不受影响。
+
+     ⚠️ 裁剪层必须是 main 而不是 body：溢出是从 .container.page 经 main 传播到 html 的，
+        在 body 上裁剪实测无效（scrollWidth 仍是 1483），要在 main 这一层就截断。 */
+  overflow-x: clip;
+}
+
+.container {
+  width: var(--content-w);
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--sp-6) 0;
+}
+
+/* ============ 内容区深黑底：一整块 ============
+   本轮要求：整个内容区**一块**深黑半透明底，而不是每个卡片 / 每栏各自一块；
+   且**不再用 backdrop-filter: blur**（毛玻璃已去掉），网格直接透出来。
+
+   ⚠️⚠️ 必须是**伪元素**，不能直接加在 .container 上：
+   backdrop-filter 和 transform / filter 一样会给元素创建「包含块」，
+   使其后代的 position: fixed 全部变成相对它定位。
+   .container.page 里面有 .toc（目录）和 .mobile-panel（移动端菜单）两个 fixed，
+   直接加在容器上它们会失效。伪元素没有后代，所以是安全的。
+
+   z-index: -1 让它压在内容之下；因为 #app 有 z-index: 1 自己就是层叠上下文，
+   这个 -1 只会退到「.container 的背景之后」，不会退到网格之下 ——
+   网格是 body::before（root 层叠上下文的 z-index: 0），#app 整体在它之上。 */
+.container.page { position: relative; }
+/* ⚠️ 不要给 .container.page 的**子元素**统一加 position —— .toc 和 .mobile-panel
+   是它的直接子元素，被 `position: relative` 覆盖后 fixed 就失效了
+   （实测切到文章页滚动后 toc top 变成 -432，跟着页面滚走了）。
+   其实也不需要：负 z-index 的伪元素本来就画在「常规流内容」之下，
+   按 CSS 绘制顺序（背景 → 负 z-index → 常规流块 → …），
+   内容自动压在玻璃之上。 */
+
+.container.page::before {
+  content: '';
+  position: absolute;
+  /* 上下各外扩一点，保证和导航栏 / 页脚**无缝相接** ——
+     容器盒顶本来就在 y=0（页面 padding-top 只是内容内缩），
+     外扩后深色底上探到导航栏下沿、下探到页脚上沿，中间不留背景空隙。
+     左右外扩 = 羽化宽度，好让淡出带完整落在块内（外扩不足会被边界截断成硬边）。 */
+  top: calc(var(--sp-5) * -1);
+  /* 向下额外多外扩 --sp-6：页脚有 margin-top，那一段没有深色底会露出网格。
+     外扩量 = sp-5（常规余量）+ sp-6（页脚下边距）即可盖到页脚上沿。 */
+  bottom: calc((var(--sp-5) + var(--sp-6)) * -1);
+  left: calc(var(--gxe) * -1);
+  right: calc(var(--gxe) * -1);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--glass-bg);
+  border-radius: var(--radius);
+  /* 边缘羽化：**只羽化左右**（本轮要求）。
+     ⚠️ 上下不能羽化 —— 内容区要和导航栏、页脚连成一整块连续深黑底，
+        上下一旦渐隐，接缝处就会露出网格，形成一道空隙。
+     所以这里只有一条横向渐变，不再需要 mask-composite 取交集。 */
+  --gx: var(--glass-feather-x, 120px);
+  /* 羽化带的**物理总长**：比单侧留白再外扩 30%。
+     ⚠️ 为什么要外扩：屏幕边缘到内容区边缘只有 gx 像素，纯线性渐变在这段距离里
+        完成 0→100%，斜率恒定且在两端突变，看起来就是一条"硬边"。
+        把带子向视口外延长 30%，同样的 0→100% 摊到 1.3 倍距离上，斜率整体降低，
+        过渡自然变平缓。屏幕边缘因此不再是 alpha=0 的精确起点，
+        但残留值只有约 0.13 —— 叠在纯黑底 (#000) 上只有 1 个色阶差，肉眼不可见。
+        想更平缓就调这个 1.3（1.5 时残留约 2.6 色阶，开始可察觉）。 */
+  --gxe: calc(var(--gx) * 1.3);
+  /* ⚠️ 曲线形状用 smoothstep（t²(3−2t)）而不是线性：
+     线性渐变在两端的一阶导数不为 0（斜率从 0 突跳到恒定值），
+     人眼对这种"开始变化 / 停止变化"的拐点很敏感，就成了一条分界线。
+     smoothstep 两端导数都是 0，变化是"悄悄开始、悄悄结束"的，没有拐点。
+     CSS 渐变没有 easing 函数，只能用多段色标逼近曲线（下面 11 个点）。 */
+  -webkit-mask-image: linear-gradient(to right,
+      rgba(0,0,0,0) 0,
+      rgba(0,0,0,0.028) calc(var(--gxe) * 0.10),
+      rgba(0,0,0,0.104) calc(var(--gxe) * 0.20),
+      rgba(0,0,0,0.216) calc(var(--gxe) * 0.30),
+      rgba(0,0,0,0.352) calc(var(--gxe) * 0.40),
+      rgba(0,0,0,0.500) calc(var(--gxe) * 0.50),
+      rgba(0,0,0,0.648) calc(var(--gxe) * 0.60),
+      rgba(0,0,0,0.784) calc(var(--gxe) * 0.70),
+      rgba(0,0,0,0.896) calc(var(--gxe) * 0.80),
+      rgba(0,0,0,0.972) calc(var(--gxe) * 0.90),
+      #000 var(--gxe),
+      #000 calc(100% - var(--gxe)),
+      rgba(0,0,0,0.972) calc(100% - var(--gxe) * 0.90),
+      rgba(0,0,0,0.896) calc(100% - var(--gxe) * 0.80),
+      rgba(0,0,0,0.784) calc(100% - var(--gxe) * 0.70),
+      rgba(0,0,0,0.648) calc(100% - var(--gxe) * 0.60),
+      rgba(0,0,0,0.500) calc(100% - var(--gxe) * 0.50),
+      rgba(0,0,0,0.352) calc(100% - var(--gxe) * 0.40),
+      rgba(0,0,0,0.216) calc(100% - var(--gxe) * 0.30),
+      rgba(0,0,0,0.104) calc(100% - var(--gxe) * 0.20),
+      rgba(0,0,0,0.028) calc(100% - var(--gxe) * 0.10),
+      rgba(0,0,0,0) 100%);
+  mask-image: linear-gradient(to right,
+      rgba(0,0,0,0) 0,
+      rgba(0,0,0,0.028) calc(var(--gxe) * 0.10),
+      rgba(0,0,0,0.104) calc(var(--gxe) * 0.20),
+      rgba(0,0,0,0.216) calc(var(--gxe) * 0.30),
+      rgba(0,0,0,0.352) calc(var(--gxe) * 0.40),
+      rgba(0,0,0,0.500) calc(var(--gxe) * 0.50),
+      rgba(0,0,0,0.648) calc(var(--gxe) * 0.60),
+      rgba(0,0,0,0.784) calc(var(--gxe) * 0.70),
+      rgba(0,0,0,0.896) calc(var(--gxe) * 0.80),
+      rgba(0,0,0,0.972) calc(var(--gxe) * 0.90),
+      #000 var(--gxe),
+      #000 calc(100% - var(--gxe)),
+      rgba(0,0,0,0.972) calc(100% - var(--gxe) * 0.90),
+      rgba(0,0,0,0.896) calc(100% - var(--gxe) * 0.80),
+      rgba(0,0,0,0.784) calc(100% - var(--gxe) * 0.70),
+      rgba(0,0,0,0.648) calc(100% - var(--gxe) * 0.60),
+      rgba(0,0,0,0.500) calc(100% - var(--gxe) * 0.50),
+      rgba(0,0,0,0.352) calc(100% - var(--gxe) * 0.40),
+      rgba(0,0,0,0.216) calc(100% - var(--gxe) * 0.30),
+      rgba(0,0,0,0.104) calc(100% - var(--gxe) * 0.20),
+      rgba(0,0,0,0.028) calc(100% - var(--gxe) * 0.10),
+      rgba(0,0,0,0) 100%);
+}
+.container-wide {
+  width: var(--nav-w);
+  max-width: calc(var(--content-max) + 200px);
+  margin: 0 auto;
+}
+
+/* ============ 导航栏 ============ */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 60;
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  /* ⚠️ 本轮：导航栏改成**纯色 100% 不透明**（--bar-bg），
+     不再用内容区的 90% 半透明底。 */
+  background: var(--bar-bg);
+  /* ⚠️ 本轮要求：导航栏**不要羽化**。
+     之前给底边加羽化是为了避免「玻璃下沿一条硬线」，但现在导航栏要和
+     内容区、页脚连成一整块连续深黑底 —— 羽化反而会在接缝处露出网格空隙。 */
+  border-bottom: 1px solid var(--border);
+  transition: background-color var(--t-theme) ease, border-color var(--t-theme) ease;
+}
+.nav-inner {
+  width: var(--nav-w);
+  max-width: calc(var(--content-max) + 200px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+.nav-logo { display: flex; align-items: center; margin-right: auto; }
+.nav-links { display: flex; align-items: center; gap: var(--sp-5); }
+.nav-link {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  position: relative;
+  padding-bottom: 2px;
+}
+.nav-link:hover { color: var(--text); text-shadow: 0 0 var(--glow-blur-strong) var(--accent); }
+.nav-link::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -2px;
+  height: 1px; background: var(--accent);
+  box-shadow: 0 0 calc(var(--glow-blur) * 0.9) var(--accent);
+  opacity: 0; transition: opacity .2s ease;
+}
+.nav-link:hover::after, .nav-link[aria-current='page']::after { opacity: 1; }
+.nav-link[aria-current='page'] {
+  color: var(--accent-text);
+  text-shadow: 0 0 calc(var(--glow-blur) * 1.3) var(--accent);
+}
+.nav-spacer { width: var(--sp-4); }
+
+/* 明暗按钮 */
+.theme-btn {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all .2s ease;
+}
+.theme-btn:hover { color: var(--text); border-color: var(--accent); box-shadow: 0 0 var(--glow-blur-strong) var(--accent-soft); }
+
+/* 汉堡 */
+.hamburger { display: none; }
+.mobile-panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 74%; max-width: 320px;
+  z-index: 70;
+  background: var(--glass-bg);
+  border-left: 1px solid var(--border);
+  padding: var(--sp-4);
+  transform: translateX(100%);
+  transition: transform .28s ease;
+}
+.mobile-panel.open { transform: translateX(0); }
+.mobile-panel .panel-top { display: flex; justify-content: flex-end; margin-bottom: var(--sp-5); }
+/* ⚠️ 这条必须显式写 display: flex：
+   窄屏媒体查询里有一条 `.nav-links { display: none }`（用来收起桌面导航），
+   特异性和这里一样都是 (0,1,0)/(0,2,0) 但它不设 display —— 结果浮层里的
+   导航项也被一起隐藏，面板只剩两个按钮，看起来就是「浮层没样式」。 */
+.mobile-panel .nav-links { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-4); }
+
+/* ============ SVG 发光 ============
+   三个 SVG 都是外链加载，发光由各自组件内部负责（放在 mask/img 的外层，
+   否则 drop-shadow 会被 mask 裁掉）。这里不再重复加 filter。 */
+
+/* B 的漂浮：上下左右 + 倾斜 ±5° */
+@keyframes float-b {
+  0%   { transform: translate(0, 0) rotate(-5deg); }
+  25%  { transform: translate(10px, -12px) rotate(2deg); }
+  50%  { transform: translate(-6px, -18px) rotate(5deg); }
+  75%  { transform: translate(-12px, -6px) rotate(-2deg); }
+  100% { transform: translate(0, 0) rotate(-5deg); }
+}
+.float-anim { animation: float-b 11s ease-in-out infinite; }
+
+/* ============ 按钮 / 标签 ============ */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  padding: 3px 10px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 999px;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .18s ease;
+}
+.tag:hover { border-color: var(--accent); color: var(--text); }
+.tag.on {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-faint);
+  box-shadow: 0 0 calc(var(--glow-blur) * 0.8) var(--accent-soft), inset 0 0 8px var(--accent-faint);
+}
+.tag-static { cursor: default; }
+
+.btn-ghost {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all .18s ease;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+.btn-ghost.on { border-color: var(--accent); color: var(--accent-text); }
+
+/* ============ 搜索框 ============ */
+.search-wrap { position: relative; width: 100%; }
+/* 按钮的定位基准必须是 form —— 若基准是 .search-wrap，下方出现用户入口 / 提示时
+   wrap 变高，top:50% 会把按钮一起往下拽。 */
+.search-wrap > form { position: relative; }
+.search-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  padding: 12px 44px 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color .2s ease, box-shadow .2s ease, background-color var(--t-theme) ease;
+}
+.search-input::placeholder { color: var(--text-faint); }
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 var(--glow-blur) var(--accent-soft);
+}
+.search-btn {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: 0; background: transparent; color: var(--text-dim); cursor: pointer;
+}
+.search-btn:hover { color: var(--accent); }
+/* 用户入口：内联在搜索框正下方，把下面的内容推开而不是盖住它们，
+   所以标签栏始终可点。 */
+.search-user-slot { margin-top: var(--sp-2); }
+.search-user-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  padding: 10px var(--sp-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-faint);
+  color: var(--accent-text);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 0 var(--glow-blur) var(--accent-soft);
+  transition: box-shadow .18s ease, background-color var(--t-theme) ease;
+}
+.search-user-item:hover { box-shadow: 0 0 calc(var(--glow-blur) * 1.6) var(--accent-soft); }
+
+/* ============ 卡片 ============ */
+.card {
+  display: block;
+  /* ⚠️ 本轮：卡片**不再各自带一块深黑底** —— 改成整个内容区一整块。
+     每张卡片各糊一层的话，边缘一圈圈硬边，且卡片之间会露出没糊的网格缝。 */
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  color: inherit;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background-color var(--t-theme) ease;
+}
+
+
+.card:hover {
+  /* 上移 2px → 6px（本轮再加 1px），发光也明显加强（blur × 2、再加一层内发光）。
+     两层 box-shadow 叠出「外扩光晕 + 边缘内亮」的层次。 */
+  transform: translateY(-6px);
+  border-color: var(--accent);
+  box-shadow: 0 0 calc(var(--glow-blur) * 2) var(--accent-soft),
+              0 0 calc(var(--glow-blur) * 0.7) var(--accent),
+              inset 0 0 14px var(--accent-faint);
+}
+/* 置顶：一眼能看出来 —— 图钉角标 + 强调色边框 + 更强发光 + 背景微亮。
+   ⚠️ 不能只靠图钉：角标只有 30px，在瀑布流里扫一眼很容易漏掉；
+      卡片整体的特殊样式才是「一眼可见」的那部分。
+      也不加文字（明确要求），纯视觉区分。
+   注意：这里绝不能加 overflow: hidden —— 卡片整体是 <a>，hover 时 text-shadow 会
+   继承给标题/日期/标签/摘要，光晕需要扩散到卡片边界外。
+   一旦裁切，光晕就会在卡片边缘被切成一条直边，看起来像方块。
+   角标改用「自己圆右上角」来贴合卡片圆角（见下面 ::after）。 */
+.card.pinned {
+  position: relative;
+  border-color: var(--accent);
+  border-width: 1px;
+  /* 背景微亮：在卡片底上再叠一层很淡的强调色，日间夜间都看得出区别 */
+  background: color-mix(in srgb, var(--card-bg) 88%, var(--accent));
+  /* 常驻发光（比普通卡片静止时明显强），悬停时在上面那条 :hover 里再叠一层 */
+  box-shadow: 0 0 calc(var(--glow-blur) * 1.1) var(--accent),
+              inset 0 0 18px var(--accent-faint);
+}
+.card.pinned:hover {
+  box-shadow: 0 0 calc(var(--glow-blur) * 2.4) var(--accent-soft),
+              0 0 calc(var(--glow-blur) * 1.1) var(--accent),
+              inset 0 0 18px var(--accent-faint);
+}
+.card.pinned::after {
+  content: '';
+  position: absolute;
+  /* 负 1px 抵掉卡片边框：absolute 定位基准是 padding box，
+     不补偿的话角标会比卡片圆角内缩 1px，露出一条细边。 */
+  top: -1px; right: -1px;
+  width: 30px; height: 30px;
+  /* 图钉：斜别针造型，直接用背景图内联，避免再引入组件 */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 17v5'/%3E%3Cpath d='M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 15px 15px;
+  background-color: var(--accent);
+  /* 右上也圆 —— 和卡片右上角同一个圆心、同一个半径，弧线完全重合，
+     所以不需要 overflow: hidden 也能严丝合缝贴合。
+     左下圆角是角标自己的造型（朝卡片内侧收）。
+     顺序：左上 右上 右下 左下 */
+  border-radius: 0 var(--radius) 0 var(--radius);
+  box-shadow: 0 0 var(--glow-blur) var(--accent-soft);
+}
+.cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  margin-bottom: var(--sp-3);
+  display: block;
+}
+.card-title { font-size: var(--fs-h3); font-weight: 600; margin-bottom: var(--sp-1); }
+.card-date { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint); line-height: 1.5; }
+/* 摘要：单行省略号。
+   overflow: hidden 是 ellipsis 必需的，但也会把 text-shadow 的光晕裁成矩形硬边。
+   解法是给光晕留出呼吸空间：padding 撑开盒子，再用等量负 margin 把布局拉回去 ——
+   文字的视觉位置、卡片高度都不变，光晕却能扩散到 padding 里再自然衰减。
+   垂直给 10px（夜间 --glow-blur 是 14px，到这里已衰减到约 15%，硬边基本看不出）。 */
+.card-excerpt {
+  font-size: var(--fs-sm); color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 10px 12px;
+  /* 上：padding-top 10 + margin-top -2 = 8（= 原来的 --sp-2）
+     左右、下：padding 与负 margin 相抵 = 0，占位不变 */
+  margin: -2px -12px -10px;
+}
+.card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-2); }
+
+/* 网格布局保留给其它场景用；博客页已改为 .masonry */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  align-items: start;
+  gap: var(--sp-4);
+}
+
+/* 瀑布流：左右两列各自独立往下堆，卡片保持自身高度、错落排布。
+   列是直接标 flex column —— 不用 grid / CSS columns，
+   否则同行卡片会被拉平、没封面的卡片底部会空出一大块。 */
+.masonry {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+}
+.masonry-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  flex: 1 1 0;
+  min-width: 0;
+}
+.grid-proj { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-4); }
+
+/* ============ 时间线（项目页） ============
+   结构：年份节点（带圆点）→ 竖线容器 → 月份节点 → 项目卡片
+   竖线是容器的 ::before 伪元素，不再是一个 2px 宽的真盒子 —— 否则月份和卡片会被塞进 2px 里。 */
+.tl-year { position: relative; margin-bottom: var(--sp-5); }
+
+.tl-node {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-family: var(--font-mono); font-size: var(--fs-h3); font-weight: 600;
+  background: transparent; border: 0; color: var(--text);
+  cursor: pointer; padding: 4px 0;
+  width: 100%; text-align: left;
+}
+.tl-node:hover { color: var(--accent-text); }
+.tl-node .tl-fold { font-size: var(--fs-sm); font-weight: 400; }
+
+.tl-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 var(--glow-blur) var(--accent);
+  flex: none;
+}
+
+/* 竖线容器：占满宽度，线画在左侧伪元素上 */
+.tl-line {
+  position: relative;
+  margin-left: 5px;              /* 圆点 12px → 中心 6px，线宽 2px → 左偏移 5px 正好居中对齐 */
+  padding-left: var(--sp-5);     /* 32px，给项目卡片留足宽度 */
+  padding-top: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+.tl-line::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--accent), var(--accent-faint));
+  box-shadow: 0 0 var(--glow-blur) var(--accent-soft);
+}
+
+.tl-month { margin-bottom: var(--sp-4); }
+.tl-month-node {
+  font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-dim);
+  background: transparent; border: 0; cursor: pointer; padding: 2px 0;
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; text-align: left;
+}
+.tl-month-node:hover { color: var(--accent-text); }
+.tl-month-node .tl-fold { font-size: var(--fs-xs); }
+
+/* 同一个月的项目横向排列（多列），放不下自动换行。
+   列数自适应：auto-fill + minmax —— 容器多宽就放几列，不用写媒体查询。
+   用 minmax(260px, 1fr) 而不是固定列数，窄屏会自动降到 1 列。 */
+.tl-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 0;
+  align-items: start;   /* 不要 stretch —— 卡片高度不同才自然，不然矮卡片被拉高留白 */
+}
+
+/* ============ 目录 ============ */
+.toc {
+  /* 目录自己是 fixed，给它加深色底是安全的（不影响自身的 fixed）——
+     但本轮已去掉 backdrop-filter，这里只保留深色底 
+     （包含块只影响后代，不影响自己）。 */
+  background: var(--glass-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  position: fixed;
+  left: max(16px, calc((100vw - var(--content-max)) / 2 - 220px));
+  top: calc(var(--nav-h) + var(--sp-5));
+  width: 200px;
+  max-height: calc(100vh - var(--nav-h) - 96px);
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  z-index: 30;
+}
+.toc-title { color: var(--text-faint); margin-bottom: var(--sp-2); }
+.toc a { display: block; padding: 3px 0; color: var(--text-dim); border-left: 2px solid var(--border); padding-left: var(--sp-2); }
+.toc a.h3 { padding-left: var(--sp-3); font-size: var(--fs-xs); }
+.toc a:hover, .toc a.active { color: var(--accent-text); border-left-color: var(--accent); text-shadow: 0 0 8px var(--accent); }
+.toc-hl { animation: toc-hl 1s ease; }
+@keyframes toc-hl {
+  0%, 70% { background: var(--accent-soft); }
+  100% { background: transparent; }
+}
+.toc-toggle { display: none; }
+
+/* ============ 阅读进度条 ============ */
+.progress {
+  position: fixed;
+  top: var(--nav-h);
+  left: 0;
+  height: 3px;
+  width: 0;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  z-index: 61;
+  transition: width .1s linear, background-color var(--t-theme) ease;
+}
+
+/* ============ 返回顶部 ============ */
+.to-top {
+  position: fixed; right: var(--sp-4); bottom: var(--sp-4);
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  color: var(--accent-text);
+  cursor: pointer;
+  opacity: 0; pointer-events: none;
+  transform: translateY(10px);
+  transition: opacity .25s ease, transform .25s ease;
+  z-index: 55;
+}
+.to-top.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.to-top:hover { box-shadow: 0 0 var(--glow-blur-strong) var(--accent-soft); border-color: var(--accent); }
+
+/* ============ 页脚 ============ */
+.footer {
+  /* 本轮：页脚改成**全屏宽**（原来跟随 container-wide，只有 88%）。
+     深黑底铺满整条，内部再用 .footer-inner 把内容收进内容区宽度。 */
+  display: block;
+  width: 100%;
+  /* ⚠️ 同导航栏：纯色 100% 不透明 */
+  background: var(--bar-bg);
+  /* ⚠️ 本轮要求：页脚**不要羽化**，且和内容区之间不能有背景空隙。
+     上一版为了连通把 margin-top 改成 0、改用 padding 撑，结果页脚变高了
+     （多出 sp-6 的高度）—— 现在恢复原来的 margin-top + padding，
+     连通改由内容区 ::before **向下多外扩 sp-6** 来覆盖这段空隙。 */
+  border-top: 1px solid var(--border);
+  margin-top: var(--sp-6);
+  padding: var(--sp-4) 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  transition: border-color var(--t-theme) ease;
+}
+/* 内容收回内容区宽度（深黑底本身是全屏宽的） */
+.footer-inner {
+  width: var(--nav-w);
+  max-width: calc(var(--content-max) + 200px);
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+/* ============ Markdown 正文 ============ */
+.prose { font-size: var(--fs-body); }
+.prose h2 { margin: var(--sp-5) 0 var(--sp-3); scroll-margin-top: calc(var(--nav-h) + 16px); }
+.prose h3 { margin: var(--sp-4) 0 var(--sp-2); scroll-margin-top: calc(var(--nav-h) + 16px); }
+.prose ul, .prose ol { padding-left: var(--sp-4); margin: 0 0 var(--sp-3); }
+.prose li { margin-bottom: 4px; }
+.prose blockquote {
+  margin: var(--sp-3) 0;
+  padding-left: var(--sp-3);
+  border-left: 3px solid var(--accent);
+  color: var(--text-dim);
+}
+.prose img { max-width: 100%; border-radius: 6px; cursor: zoom-in; border: 1px solid var(--border); }
+/* ============================================================
+   正文插图 = 便签纸（文章页 / 项目页通用）
+   ------------------------------------------------------------
+   微微倾斜 + 投影，像随手贴在页面上的纸片；点击放大（灯箱）。
+   选择器用 `.prose p > img`：markdown 的独立图片一定被包在 <p> 里，
+   这样写能精确避开相册里的图（它们躺在 .gallery 的 div 中，不在 p 里）。
+   `:not(.gallery-img)` 是双保险。
+   ⚠️ 特异性：.prose p > img:not(.gallery-img) 是 (0,2,2)，
+      压得过上面的 `.prose img` (0,1,1)，不需要 !important。
+   ============================================================ */
+.prose p > img:not(.gallery-img) {
+  display: block;
+  margin: var(--sp-5) auto;
+  padding: 10px;
+  background: var(--note-bg);
+  /* 便签不该有描边 —— 纸的边界靠投影和留白表达 */
+  border: none;
+  border-radius: 2px 2px 10px 2px;
+  box-shadow: var(--note-shadow);
+  cursor: zoom-in;
+  transform: rotate(var(--note-rot, -1.4deg));
+  transition: transform .22s ease, box-shadow .22s ease;
+}
+.prose p > img:not(.gallery-img):hover {
+  /* 悬停「扶正」并微微放大，是便签被拿起来的手感 */
+  transform: rotate(0deg) scale(1.03);
+  box-shadow: var(--note-shadow-hover);
+}
+/* 相邻便签交替倾角：全部同角度会显得刻意，像贴歪了才自然。
+   nth-of-type 数的是所有段落（含纯文字段），所以结果是「看似随机」的，
+   这正好符合想要的效果 —— 不需要真的按图片序号算。 */
+.prose p:nth-of-type(2n) > img:not(.gallery-img) { --note-rot: 1.2deg; }
+.prose p:nth-of-type(3n) > img:not(.gallery-img) { --note-rot: -0.6deg; }
+.prose p:nth-of-type(5n) > img:not(.gallery-img) { --note-rot: 1.8deg; }
+/* 单张便签的说明文字：`![说明](...)` 里那句是 alt，浏览器正常加载图片时
+   一句都不显示。插件 / ui.ts 把它写进 .note-cap，这里负责位置和层次：
+   有说明时把图的下外边距收紧，说明居中贴在便签正下方。 */
+.prose p.has-note-cap > img:not(.gallery-img) { margin-bottom: var(--sp-2); }
+.note-cap {
+  display: block;
+  margin: 0 auto;
+  text-align: center;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
+  /* 便签有轻微旋转，留 2px 免得视觉上贴得太死 */
+  padding-top: 2px;
+}
+
+/* ============================================================
+   相册 :::gallery（文章页 / 项目页通用）
+   ------------------------------------------------------------
+   布局：左小图 | 中间大图 | 右小图。
+   小图本身就是按钮 —— 点它就翻页（和左右箭头等价）。
+   首尾只有一边有图：空缺那侧用 .is-void 隐藏但**保留占位**，
+   这样中间大图始终居中，翻页时不会左右跳。
+   ============================================================ */
+.gallery { margin: var(--sp-5) 0; }
+.gallery-row {
+  display: grid;
+  /* 三列固定：侧图 92px、中间自适应 */
+  grid-template-columns: 92px minmax(0, 1fr) 92px;
+  gap: var(--sp-3);
+  align-items: center;
+}
+.gallery-side {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 92px;
+  height: 92px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  cursor: pointer;
+  /* 侧图默认压暗：它是「下一张的预览」，不是主角 */
+  opacity: .55;
+  transition: opacity .2s ease, border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.gallery-side:hover {
+  opacity: 1;
+  border-color: var(--accent);
+  transform: scale(1.05);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+/* ⚠️ 用 visibility 而不是 display：
+   display:none 会让这一列塌掉，中间大图跟着往左/右跳，翻页时整块在抖。 */
+.gallery-side.is-void { visibility: hidden; pointer-events: none; }
+.gallery-side img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.gallery-main {
+  position: relative;
+  height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--gallery-bg);
+  overflow: hidden;
+}
+/* ⚠️ 必须写成 `.gallery .gallery-img`（0,2,0）——
+   只写 `.gallery-img`（0,1,0）压不过上面的 `.prose img`（0,1,1），
+   图片会带上一条 --border 描边。 */
+.gallery .gallery-img {
+  position: absolute;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: none;
+  border-radius: 4px;
+  cursor: zoom-in;
+  opacity: 0;
+  /* 非当前图不能吃点击，否则会点到看不见的那张 */
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+.gallery .gallery-img.is-cur { opacity: 1; pointer-events: auto; z-index: 2; }
+/* 翻页动画只在真的翻页时挂上（dir≠0），首屏不播 */
+.gallery .gallery-img.is-cur.is-anim {
+  animation: gallery-in .34s cubic-bezier(.22, .9, .3, 1);
+}
+@keyframes gallery-in {
+  from { opacity: 0; transform: translateX(calc(var(--gdir, 1) * 34px)) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+/* 箭头提示：贴在大图两侧内缘，半透明，悬停才亮 */
+.gallery-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-elev) 70%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: .5;
+  transition: opacity .2s ease, border-color .2s ease, color .2s ease, background-color .2s ease;
+  font-family: var(--font-sans);
+}
+.gallery-arrow:hover {
+  opacity: 1;
+  color: var(--accent-text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.gallery-arrow-prev { left: 10px; }
+.gallery-arrow-next { right: 10px; }
+.gallery-arrow.is-void { opacity: 0; pointer-events: none; }
+.gallery-count {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  z-index: 3;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--bg-elev) 72%, transparent);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.gallery-caption {
+  margin-top: var(--sp-2);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  min-height: 1.4em;
+}
+@media (max-width: 900px) {
+  .gallery-row { grid-template-columns: 62px minmax(0, 1fr) 62px; gap: var(--sp-2); }
+  .gallery-side { width: 62px; height: 62px; }
+  .gallery-main { height: 240px; }
+}
+
+/* ============================================================
+   原创 / 转载徽标（卡片 / 列表 / 首页最新 / 详情页通用）
+   ------------------------------------------------------------
+   原创：强调色描边 + 淡填充；转载：中性灰描边 —— 一眼能区分，
+   且都不抢正文视觉。跟着世界强调色变。
+   ============================================================ */
+.kind-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  vertical-align: 1px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent-text);
+  background: var(--accent-faint);
+  white-space: nowrap;
+  transition: color var(--t-theme) ease, border-color var(--t-theme) ease;
+}
+/* 转载：中性（不跟强调色），和「原创」在颜色上拉开距离 */
+.kind-badge.is-reprint {
+  border-color: var(--border-strong);
+  color: var(--text-faint);
+  background: transparent;
+}
+.article-source { color: var(--text-dim); }
+.article-source a { color: var(--accent-text); }
+
+/* ============================================================
+   视频播放器 ::video（自定义 UI，数据感风格）
+   ------------------------------------------------------------
+   外链平台（B 站 / YouTube…）拿不到原始流 → 退化成外链卡片 .player-ext
+   ============================================================ */
+.player {
+  margin: var(--sp-5) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.player:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.player-stage {
+  position: relative;
+  /* 16:9 舞台：视频原始比例未知，固定比例可以避免加载前后高度跳变 */
+  aspect-ratio: 16 / 9;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.player-video { display: block; width: 100%; height: 100%; object-fit: contain; cursor: pointer; }
+/* 中央大播放按钮：播放中隐藏 */
+.player-big {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 62px; height: 62px;
+  font-size: 22px;
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--bg-elev) 74%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  /* 发光跟全站一致：强调色 + --glow-blur */
+  box-shadow: 0 0 var(--glow-blur) color-mix(in srgb, var(--accent) 55%, transparent);
+  transition: opacity .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.player-big:hover { transform: translate(-50%, -50%) scale(1.06); }
+.player-big.is-hidden { opacity: 0; pointer-events: none; }
+
+/* ---------- 全屏 ----------
+   ⚠️ 全屏作用在 .player（root）上，root 里是 [stage, bar, title] 竖排。
+   不特殊处理的话 stage 仍受 16:9 约束：全屏宽度下 16:9 高度会超出
+   屏幕高度，把控件条顶到屏幕外 —— 表现同样是「只剩画面」。
+   所以全屏时解除比例约束，让画面吃掉剩余空间，控件条固定在底部。 */
+.player:fullscreen {
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border: 0;
+  border-radius: 0;
+  /* 控件条改成绝对定位浮在画面上，root 必须建立定位上下文 */
+  position: relative;
+}
+.player:fullscreen .player-stage {
+  aspect-ratio: auto;
+  flex: 1 1 auto;
+  min-height: 0;          /* 关键：否则 flex 子项不肯收缩，仍会溢出 */
+}
+/* 全屏时标题行会占掉画面高度，隐藏 */
+.player:fullscreen .player-title { display: none; }
+/* 控件条浮在画面上，画面因此能吃掉整屏高度。
+   ⚠️ 不再参与 flex 布局（改成 absolute），否则画面底部永远被它压掉一条。
+   ⚠️ 浮在画面上就必须自带底板，不然深色按钮压在亮画面上看不清。 */
+.player:fullscreen .player-bar {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 2;
+  border-top: 0;
+  background: linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.62) 55%, rgba(0,0,0,.28) 100%);
+  backdrop-filter: blur(6px);
+}
+/* Safari / 旧内核用 -webkit- 前缀，必须重复一遍 */
+.player:-webkit-full-screen { display: flex; flex-direction: column; background: #000; border: 0; border-radius: 0; position: relative; }
+.player:-webkit-full-screen .player-stage { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; }
+.player:-webkit-full-screen .player-title { display: none; }
+.player:-webkit-full-screen .player-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; border-top: 0;
+  background: linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.62) 55%, rgba(0,0,0,.28) 100%);
+  backdrop-filter: blur(6px);
+}
+
+/* ---------- 全屏空闲：控件条淡出 ----------
+   鼠标静止 2.5s 后隐藏，一动即恢复（JS 侧加/删 .is-idle，见 videoPlayer.ts）。
+   ⚠️ 用 opacity 而不是 display/visibility：控件条始终占位，淡入淡出时
+      画面高度不会跳变（display:none 会让画面突然变高再变矮，很难看）。
+   ⚠️ pointer-events:none 必须加：否则透明状态下鼠标扫过会误触到按钮。 */
+.player.is-idle { cursor: none; }
+.player.is-idle .player-bar { opacity: 0; pointer-events: none; }
+.player.is-idle .player-big { opacity: 0; pointer-events: none; }
+/* 键盘用户：focusin 会恢复显示，但过渡期间先保证焦点可见 */
+.player.is-idle .player-bar :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.player-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px var(--sp-3);
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  flex-wrap: wrap;
+  /* 全屏空闲淡出用（.player.is-idle），淡入淡出都要过渡 */
+  transition: opacity .25s ease;
+}
+.player-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 5px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  transition: color .18s ease, border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.player-btn:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+  background: var(--accent-faint);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.player-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.player-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.player-time-sep { color: var(--text-faint); }
+
+/* ---------- 进度条 / 音量条 ----------
+   ⚠️ 原生 range 的 CSS 读不到 value，「已填充」百分比必须由 JS 写进 --fill
+      （videoPlayer.ts / audioPlayer.ts 的 fillRange）。
+   ⚠️ 只画灰轨道 + 强调色圆点的话，看不出播到哪儿、音量多大 ——
+      实测反馈「光有个点没有颜色，一下子没反应过来视频放到哪儿了」。
+   分三段：已播放（强调色） / 已缓冲（暗强调色） / 未缓冲（边框色）。 */
+.player-seek, .player-vol-range, .audio-vol {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 5px;
+  border-radius: 999px;
+  cursor: pointer;
+  /* ⚠️ 必须给 fallback：主题属性（data-theme/data-world）若尚未设置，
+     --accent 为空会让整条 linear-gradient 判为无效 → 连底色都没了。
+     实测在裸测试页上就是这样，比原来的纯灰轨道更糟。 */
+  --fill-color: var(--accent, #5b8fc7);
+  --buf-color: color-mix(in srgb, var(--accent, #5b8fc7) 32%, var(--border, #2a2a31));
+  background: linear-gradient(to right,
+    var(--fill-color) 0%,        var(--fill-color) var(--fill, 0%),
+    var(--buf-color)  var(--fill, 0%), var(--buf-color)  var(--buf, 0%),
+    var(--border)     var(--buf, 0%),  var(--border)     100%);
+}
+/* 音量默认满格：即使 JS 还没初始化也不会看着像静音 */
+.player-vol-range, .audio-vol { --fill: 100%; }
+/* 静音时填充变灰：数值还在，但当前确实无声 */
+.player-vol-range[data-muted="1"], .audio-vol[data-muted="1"] {
+  --fill-color: var(--text-faint);
+}
+.player-seek:focus-visible, .player-vol-range:focus-visible, .audio-vol:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.player-seek { flex: 1 1 120px; min-width: 90px; }
+.player-vol-range { width: 68px; }
+.player-seek::-webkit-slider-thumb,
+.player-vol-range::-webkit-slider-thumb,
+.audio-vol::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--fill-color);
+  /* 深/浅底上都勾得出轮廓，亮画面压上去也看得见 */
+  border: 2px solid var(--bg-elev);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 9px color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: transform .15s ease;
+}
+.player-seek::-moz-range-thumb,
+.player-vol-range::-moz-range-thumb,
+.audio-vol::-moz-range-thumb {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-elev);
+  background: var(--fill-color);
+}
+.player-seek:hover::-webkit-slider-thumb,
+.player-vol-range:hover::-webkit-slider-thumb,
+.audio-vol:hover::-webkit-slider-thumb,
+.player-seek:focus-visible::-webkit-slider-thumb,
+.player-vol-range:focus-visible::-webkit-slider-thumb,
+.audio-vol:focus-visible::-webkit-slider-thumb { transform: scale(1.25); }
+/* 当前时间提亮，跟总时长拉开层次 —— 一眼能定位播到哪儿 */
+.player-time-cur { color: var(--accent-text); font-weight: 600; }
+.player-select {
+  height: 24px;
+  padding: 0 4px;
+  color: var(--text-dim);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.player-select:hover { border-color: var(--accent); color: var(--accent-text); }
+.player-vol { display: flex; align-items: center; gap: 5px; }
+.player-title {
+  display: block;
+  padding: 0 var(--sp-3) 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+/* 截图后的提示 */
+.player-flash {
+  margin: 0 var(--sp-3) 8px;
+  padding: 5px 10px;
+  font-size: var(--fs-xs);
+  color: var(--accent-text);
+  background: var(--accent-faint);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+
+/* ============================================================
+   外链平台的官方嵌入播放器（iframe）
+   ------------------------------------------------------------
+   ⚠️ 本轮重构：尺寸、背景、边框、圆角全部从 figure 移到 **iframe 自己**身上。
+
+   原来的写法是「figure 撑 16:9 + 黑底，iframe 绝对定位铺满」，
+   配合 `figcaption` 会出一个很隐蔽的 bug：
+     - figcaption 是 static，而 iframe 是 absolute（不占流）
+     - 于是 figcaption 被排到 figure 内部**顶部**，也就是画在播放器框里面
+     - 视频 iframe 不透明 → 看不出来，一直是隐患
+     - 音乐 iframe（网易云等）背景是**透明**的 → 黑底 + 那行说明文字全透出来
+       表现为「播放器加载出来了，但背景有另一层底」
+
+   改成 iframe 自己撑 aspect-ratio / height，figcaption 就自然落到
+   iframe 下方（正常流），不再被盖住。
+
+   ⚠️ 不能给 iframe 加 pointer-events: none，会点不动。
+   ============================================================ */
+.player-embed {
+  margin: var(--sp-5) 0;
+  /* 这里**不能**再设 position / 尺寸 / 背景 —— 全部交给 iframe */
+}
+.player-embed iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* iframe 内容透明时的背板：视频按黑场（与 16:9 播放器一致） */
+  background: #000;
+}
+.player-embed-note a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-faint);
+}
+.player-embed-note a:hover { border-bottom-color: var(--accent); }
+.player-embed-note {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+/* 窄屏略微增高：16:9 在手机上太扁，字幕看不清 */
+@media (max-width: 620px) {
+  .player-embed iframe { aspect-ratio: 4 / 3; }
+}
+
+/* 外链平台兜底：不给原始流、也解析不出嵌入 → 只给前往链接 */
+.player-ext {
+  margin: var(--sp-5) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.player-ext-note { font-size: var(--fs-xs); color: var(--text-faint); }
+
+/* 截图弹窗：预览 + 选保存位置 */
+.shot-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .72);
+}
+.shot-box {
+  max-width: min(90vw, 720px);
+  max-height: 90vh;
+  overflow: auto;
+  padding: var(--sp-4);
+  background: var(--bg-elev);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--accent) 45%, transparent);
+  text-align: center;
+}
+.shot-box img { max-width: 100%; max-height: 60vh; border-radius: 4px; display: block; margin: 0 auto; }
+.shot-info { margin: var(--sp-2) 0 var(--sp-3); font-size: var(--fs-xs); color: var(--text-faint); }
+.shot-row { display: flex; gap: var(--sp-3); justify-content: center; flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+  .player-bar { gap: 6px; padding: 6px; }
+  .player-vol-range { width: 48px; }
+}
+
+.prose table { width: 100%; border-collapse: collapse; margin: var(--sp-3) 0; font-size: var(--fs-sm); }
+.prose th, .prose td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+.prose th { background: var(--bg-sunken); font-weight: 600; }
+.prose code:not(pre code) {
+  font-family: var(--font-mono); font-size: .9em;
+  background: var(--bg-sunken); padding: 2px 6px; border-radius: 4px;
+}
+.prose sup a { font-size: var(--fs-xs); }
+.prose .footnotes { margin-top: var(--sp-5); font-size: var(--fs-sm); color: var(--text-dim); border-top: 1px solid var(--border); padding-top: var(--sp-3); }
+
+/* 代码块 */
+.code-block { position: relative; margin: var(--sp-4) 0; }
+.code-block pre {
+  /* 代码底是不透明的（文字要绝对清晰），本轮去掉了叠在其上的毛玻璃 ——
+     作用是让代码块和背后的网格之间有层次，而不是糊在一起。 */
+  background: var(--code-bg) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  overflow-x: auto;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.code-block .code-tools {
+  position: absolute; top: 8px; right: 8px;
+  display: flex; gap: 6px; align-items: center;
+  opacity: 0; transition: opacity .18s ease;
+}
+.code-block:hover .code-tools { opacity: 1; }
+.code-lang {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: var(--text-faint);
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  padding: 2px 8px; background: var(--bg-elev);
+}
+.code-copy {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  padding: 2px 8px; background: var(--bg-elev); color: var(--text-dim); cursor: pointer;
+}
+.code-copy:hover { color: var(--accent-text); border-color: var(--accent); }
+.code-block .hl-line { display: block; background: var(--accent-faint); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* 图片灯箱 */
+.lightbox {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,.82);
+  display: none; place-items: center;
+  overflow: hidden;
+}
+.lightbox.open { display: grid; }
+.lightbox img { max-width: 92vw; max-height: 92vh; transition: max-width .2s ease, max-height .2s ease; cursor: grab; }
+.lightbox img.raw { max-width: none; max-height: none; }
+
+/* ============ 终端风格块（404 / 空状态） ============ */
+.terminal {
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  line-height: 2;
+  color: var(--text-dim);
+}
+.terminal .err { color: var(--text); font-size: var(--fs-h2); font-weight: 600; }
+
+/* ============ 加载态 ============ */
+#boot {
+  position: fixed; inset: 0; z-index: 300;
+  display: grid; place-items: center;
+  background: var(--bg);
+  transition: opacity .4s ease;
+}
+#boot.done { opacity: 0; pointer-events: none; }
+/* 站内导航过来的：直接不显示加载遮罩（导航是前端切换，不需要加载动画）。
+   标记在 head 的 inline script 里就落上了，所以这里连一帧都不会闪。 */
+html[data-skip-boot] #boot { display: none; }
+
+/* ============ 加载态：内容渐进出现，不要「啪」地跳出来 ============
+   原来 #app 只做 opacity 0→1，而网格和 HUD 是 body 的伪元素 / 固定层，
+   它们不在 #app 里，所以会先于内容出现 —— 看起来就是「背景先亮、内容突然冒出来」。
+
+   现在把三者统一成一个过渡：
+   ① #app：opacity + 轻微上移
+   ② 网格（body::before/::after）：opacity 单独过渡
+   ③ 网格也在同一时刻淡入
+
+   ⚠️ 网格是伪元素，拿不到 class，所以「加载中」的状态要挂在 <html> 上：
+      html:not(.app-ready) body::before { opacity: 0 }
+      bootSequence 完成后给 <html> 加 .app-ready。
+   启动标记由 bootSequence 加，导航跳过时由 head 的 inline script 直接加。 */
+html:not(.app-ready) body::before,
+html:not(.app-ready) body::after { opacity: 0; }
+body::before, body::after {
+  opacity: var(--grid-on, 1);
+  transition: opacity .7s ease;
+}
+
+/* ⚠️⚠️ #app 上绝不能留 transform（哪怕是过渡结束后的 identity matrix）——
+   一旦 #app 有 transform，它就成为内部所有 position: fixed 的包含块：
+   ① 目录（.toc）会跟着页面一起滚，不再固定；
+   ② 移动端浮层（.mobile-panel）会被算进文档宽度，撑出横向滚动
+      （实测 documentElement.scrollWidth 从 1440 变成 1760）。
+   过渡结束后 computed 值是 matrix(1,0,0,1,0,0) 而不是 none，
+   照样创建包含块 —— 所以这里干脆不用 transform，只做 opacity。
+   （卡片原本另有一层 .reveal 位移进场，本轮已移除，见下。） */
+#app {
+  opacity: 0;
+  transition: opacity .55s ease;
+}
+#app.ready { opacity: 1; }
+
+/* ============ 板块切换过渡 ============
+   站内导航是整页刷新，原来用 `opacity: 1` 一步到位 —— 内容「啪」地跳出来，很生硬。
+   现在改成真的一段淡入动画：不显示「中央 Logo 呼吸」的加载遮罩，
+   但内容仍然是渐进出现的。
+
+   ⚠️ 用 animation（不是 transition）：transition 需要两帧之间的状态差，
+   而页面刚渲染时 #app 的初始值就是 opacity:0，配合 CSS 动画的 `both`
+   才能保证从 0 起步。 */
+html[data-skip-boot] #app {
+  animation: page-in .5s cubic-bezier(.22, .9, .3, 1) both;
+}
+@keyframes page-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* 网格也一起淡入，不然背景先亮、内容后到，还是不连贯。
+
+   ⚠️⚠️ 这里是「切换板块后网格不动了」的真凶：
+   `animation` 是**简写**，只写 `grid-in` 会把基础规则里的
+   `animation: grid-drift-a ...` **整个覆盖掉** —— 漂移动画直接消失。
+   首屏没走这条规则（没有 data-skip-boot）所以看着正常，一点导航就静止。
+
+   修法：两条动画并列声明（一个管 transform、一个管 opacity，互不冲突），
+   而不是用简写覆盖。注意 grid-in 必须放**在后面**吗？不需要 ——
+   animation-name 列表按逗号对应 duration 列表，顺序一致即可。 */
+html[data-skip-boot] body::before {
+  animation: grid-drift-a var(--grid-drift-dur) linear infinite,
+             grid-in .6s ease both;
+}
+html[data-skip-boot] body::after {
+  animation: grid-drift-b var(--grid-drift-dur-2) linear infinite,
+             grid-in .6s ease both;
+}
+@keyframes grid-in {
+  from { opacity: 0; }
+  to   { opacity: var(--grid-on, 1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app { transition: opacity .3s ease; }
+}
+@keyframes breathe {
+  0%, 100% { opacity: .35; transform: scale(.97); }
+  50% { opacity: 1; transform: scale(1.03); }
+}
+#boot .boot-logo { animation: breathe 1.6s ease-in-out infinite; }
+
+/* ---- 卡片简介 tooltip ----
+   全站一致：强调色边框 + 外发光，颜色跟世界变。
+   用固定定位的全局浮层（不是伪元素）—— 简介有 overflow: hidden，
+   伪元素会被裁掉，根本显示不出来。 */
+#tip {
+  position: fixed;
+  z-index: 90;
+  max-width: min(460px, calc(100vw - 32px));
+  padding: 10px 14px;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--tip-bg);
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius);
+  box-shadow: 0 0 calc(var(--glow-blur) * 1.4) var(--accent-soft),
+              inset 0 0 12px var(--accent-faint);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+#tip.on { opacity: 1; transform: translateY(0); }
+[data-tip-on] { color: var(--accent-text); }
+
+/* B 动画期间彻底关掉命中测试 —— 时间戳锁之外的第二道保险。
+   漂浮动画会让 B 缓慢移动，快速连点时某一次可能落在旧位置的元素碎片上。 */
+.b-locked { pointer-events: none; }
+
+/* 滚动淡入 */
+/* ⚠️ 本轮：卡片的进场动画（.reveal + IntersectionObserver 逐个淡入）**整个去掉**。
+   卡片直接显示，不再逐个出现 —— 相关 CSS 与 JS 已一并移除。
+   （原来 .reveal.in 用 transform 会和 .card:hover 打架，现在一并不存在了。） */
+/* ============ 世界切换动效 ============ */
+/* 进入用户：一圈很淡的「波前」从点击处扩散出去。
+
+   ⚠️ 别做成「一坨高亮光炸开」：白核、高亮 box-shadow、scale(0) 起步
+   这三样凑一起就成了光球。现在：
+   - 去掉白核，中心只留 --accent-faint（很淡）
+   - 去掉 box-shadow（那才是「刺眼」的来源）
+   - 起始 scale(.4) 而不是 0，最大只到 scale(46)（约 2.7 倍视口宽，够覆盖全屏）
+   - 单层很细的亮边（::after）当波前，不是实心光球
+   整体 opacity 峰值只有 .55，是「扫过」不是「炸开」。 */
+.world-burst {
+  position: fixed;
+  z-index: 120;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle,
+      var(--accent-faint) 0%,
+      var(--accent-soft) 40%,
+      transparent 74%);
+  box-shadow: none;
+  animation: burst .7s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+.world-burst::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  opacity: .45;
+}
+@keyframes burst {
+  0%   { transform: translate(-50%, -50%) scale(.4);  opacity: 0; }
+  8%   { opacity: .55; }
+  55%  { transform: translate(-50%, -50%) scale(26);  opacity: .3; }
+  100% { transform: translate(-50%, -50%) scale(46);  opacity: 0; }
+}
+
+/* 回组织：发光水平线从上往下扫过全屏。
+   加强后：线更粗（3 → 5px）、拖尾更长、发光半径翻倍。 */
+.world-scan {
+  position: fixed; left: 0; right: 0; top: 0;
+  height: 5px;
+  z-index: 120;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+      transparent,
+      var(--accent-faint) 40%,
+      var(--accent) 100%);
+  box-shadow: 0 0 60px 16px var(--accent), 0 0 160px 40px var(--accent-soft);
+  animation: scan-down .65s ease-in-out forwards;
+}
+@keyframes scan-down {
+  0%   { transform: translateY(-10px); opacity: 0; }
+  15%  { opacity: 1; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+/* ============ 故障感（世界切换时套在 #app 上）============
+   ① RGB 分离：text-shadow 向左投洋红、向右投青（text-shadow 可继承，
+      所以挂在 #app 上全站文字一起分色）。
+
+   ⚠️ 这里**绝不能**用 transform 或 filter —— 两者都会给元素创建「包含块」，
+      使其内部的 position: fixed 全部变成相对该元素定位。
+      #app 里有导航栏（.nav）和目录（.toc）两个 fixed 元素，
+      实测一旦加 filter，切换这 0.5 秒里导航栏会脱离视口顶部跟着滚走。
+      所以分离只走 text-shadow（纯绘制，不影响布局与包含块），
+      位移抖动交给独立的 fixed 覆盖层 .glitch-bars 去做。
+
+   ② 内容块轻微抖：只对非固定定位的块（卡片、时间线）做位移，安全。
+   时长 500ms，和字符解码同步。 */
+.app-glitch {
+  animation: app-glitch .28s steps(2, end) 2;
+}
+@keyframes app-glitch {
+  0%   { text-shadow: -3px 0 var(--glitch-a), 3px 0 var(--glitch-b); }
+  20%  { text-shadow:  4px 0 var(--glitch-a), -4px 0 var(--glitch-b); }
+  40%  { text-shadow: -5px 1px var(--glitch-a), 5px -1px var(--glitch-b); }
+  60%  { text-shadow:  3px -1px var(--glitch-a), -3px 1px var(--glitch-b); }
+  80%  { text-shadow: -2px 0 var(--glitch-a), 2px 0 var(--glitch-b); }
+  100% { text-shadow: none; }
+}
+/* 内容块（不是 fixed，加 transform 安全）跟着抖一下 */
+.app-glitch .card,
+.app-glitch .tl-items,
+.app-glitch .credits,
+/* ⚠️ 本轮：首页「最新文章」也要跟着抖。
+   它是 React 岛（LatestFeed），内容跟世界变，之前漏在抖动列表之外 ——
+   切世界时别处在抖、它纹丝不动，看起来就像没参与转场。
+   颜色错位（text-shadow）本来就继承自 #app，所以只需要补位移。 */
+.app-glitch .latest-list {
+  animation: content-shake .28s steps(2, end) 2;
+}
+@keyframes content-shake {
+  0%   { transform: translate3d(0, 0, 0); }
+  25%  { transform: translate3d(-4px, 1px, 0); }
+  50%  { transform: translate3d(3px, -2px, 0); }
+  75%  { transform: translate3d(-2px, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+/* 横切错位条：几条随机高度的横带，短暂向右偏移，像扫描信号错位 */
+.glitch-bars {
+  position: fixed;
+  inset: 0;
+  z-index: 121;
+  pointer-events: none;
+}
+.glitch-bar {
+  position: absolute;
+  left: -8%; right: -8%;
+  background: var(--accent-soft);
+  mix-blend-mode: screen;
+  opacity: .35;
+  animation: glitch-bar .3s steps(3, end) 1 forwards;
+}
+@keyframes glitch-bar {
+  0%   { transform: translateX(0); }
+  25%  { transform: translateX(6%); }
+  50%  { transform: translateX(-5%); }
+  75%  { transform: translateX(3%); }
+  100% { transform: translateX(0); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-glitch, .glitch-bars { animation: none; }
+  .glitch-bar { display: none; }
+}
+
+/* ============ 响应式 ============ */
+@media (max-width: 900px) {
+  /* 窄屏字号跟着降一档，比例与桌面一致。
+     ⚠️ 左右羽化必须同步缩小：窄屏内容区宽 90%、单侧留白只有 ~20px，
+        沿用桌面的 120px 会把整块吃掉一半（内容区边缘处才刚淡入完）。 */
+  :root { --content-w: 90%; --nav-w: 90%; --fs-h1: 26px; --fs-h2: 21px; --fs-h3: 18px;
+          /* 窄屏内容区 90%，单侧留白 = 5vw，羽化必须不超过它，否则撑宽文档 */
+          --glass-feather-x: min(64px, 4.5vw); }
+  .nav-links { display: none; }
+  .hamburger { display: grid; }
+  .grid-2 { grid-template-columns: 1fr; }
+  /* 窄屏兜底：JS 会切成单列，这里保证 JS 生效前两列不会并排挤在一起 */
+  .masonry { flex-direction: column; }
+  .masonry-col { width: 100%; }
+  .toc { display: none; }
+  .toc-toggle {
+    display: grid; position: fixed; left: 12px; top: calc(var(--nav-h) + 12px); z-index: 40;
+    font-family: var(--font-mono); font-size: var(--fs-xs);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card-bg); color: var(--text-dim); padding: 6px 10px; cursor: pointer;
+  }
+  /* ⚠️ .mobile-open 是「进入移动端模式」的标记（给 display/定位），
+     .open 才是「滑出来」。JS 会按 matchMedia 维护 .mobile-open，
+     只切 .open 的话 .toc 永远是 display:none，点了没反应。 */
+  .toc.mobile-open {
+    display: block; position: fixed; left: 0; top: 0;
+    width: 50%; max-width: 260px; height: 100vh;
+    max-height: 100vh;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
+    padding: calc(var(--nav-h) + var(--sp-4)) var(--sp-3) var(--sp-3);
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    z-index: 45;
+  }
+  .toc.mobile-open.open { transform: translateX(0); }
+  .container { padding: var(--sp-5) 0; }
+}
+
+/* ============ 页面通用 ============ */
+.page { padding-top: calc(var(--nav-h) + var(--sp-5)); }
+.page-title { margin-bottom: var(--sp-4); }
+
+/* ============ 标签栏 ============ */
+.tag-bar {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--sp-3); flex-wrap: wrap;
+  margin-top: var(--sp-3);
+}
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-tools { display: flex; gap: 6px; flex: none; }
+.empty-state { margin-top: var(--sp-5); }
+
+/* ============ 主页 ============ */
+.home-hero {
+  display: flex;
+  /* 比下半部分窄：左右各留白，整体往里收（下半 .home-cols 是 100%）。
+     内部两栏仍 flex 1 1 50%，所以左右依然对称。 */
+  width: var(--hero-w, 88%);
+  margin: 0 auto var(--sp-6);
+  gap: var(--sp-6);
+  align-items: center;
+}
+/* flex: 1 1 50% —— 两栏严格等宽。
+   min-width: 0 不能省：flex 项默认 min-width: auto，内容一长就会把栏撑宽，50% 失效。 */
+.hero-text, .hero-art { flex: 1 1 50%; min-width: 0; }
+/* SVG 在右栏里居中 */
+.hero-art { display: flex; justify-content: center; }
+
+/* 介绍文字：行距放宽、段间留空行，让它透气。
+   行高 1.9 比正文的 1.72 更松 —— 这是首屏，读起来要更舒展。
+   完整显示：不截断、不折叠。 */
+.intro {
+  line-height: 1.9;
+}
+/* 段落之间加空行：每个块级子元素都带上边距，比 .prose 默认的间距更松。
+   注意别用 `p { margin: 0 }` —— 它会盖掉 `> * + *` 的 margin-top
+   （同为 (0,1,1) 但 .intro p 更靠后），结果段落之间一点空行都没有。
+   这里只清 bottom，上边距统一交给 `> * + *`。 */
+.intro > * + * { margin-top: var(--sp-4); }
+.intro h1 { margin: 0 0 var(--sp-3); line-height: var(--lh-head); }
+.intro h2 { margin: var(--sp-5) 0 var(--sp-4); }
+.intro p, .intro ul, .intro ol, .intro blockquote { margin-bottom: 0; }
+/* blockquote 要单独写上边距：.prose blockquote 的 margin-top 是 12px，
+   特异性比 `> * + *` 高，不覆盖的话最后一段与引用之间只有 12px，明显偏挤 */
+.intro blockquote { margin-top: var(--sp-4); }
+.intro li { margin-bottom: var(--sp-2); }
+
+.home-cols {
+  display: grid;
+  /* 最新文章 : 精选项目 = 一半一半 */
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-5);
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-5);
+}
+/* min-width: 0 防止某一列被内容顶宽，破坏一半一半 */
+.col {
+  min-width: 0;
+  /* ⚠️ 不再自带深黑底：整块由 .container.page::before 统一承担（要求
+     「内容区一整块，不是每个卡片/每栏各自一块」）。这里只保留定位，
+     内容靠 z-index 压在玻璃之上。 */
+  position: relative;
+  z-index: 1;
+}
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--sp-3); }
+.sec-head h2 { font-size: var(--fs-h3); }
+.more-link { font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+.latest-list { display: flex; flex-direction: column; gap: var(--sp-3); }
+.latest-item {
+  display: block;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--border);
+  color: inherit;
+  transition: border-color .2s ease, background-color .2s ease;
+}
+.latest-item:hover { border-left-color: var(--accent); background: var(--accent-faint); }
+.latest-title { font-weight: 600; }
+.latest-excerpt { font-size: var(--fs-sm); color: var(--text-dim); margin-top: 2px; }
+.latest-date { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint); margin-top: 4px; }
+.latest-hint { margin-top: var(--sp-2); font-family: var(--font-mono); }
+
+/* 精选项目：2 列，所有卡片等高（grid-auto-rows: 1fr + 卡片撑满） */
+.grid-mini {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
+  gap: var(--sp-3);
+}
+.grid-mini .card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+/* 摘要固定两行，卡片高度才不会因文案长短而参差不齐。
+   同样给光晕留空间：line-clamp 需要 overflow: hidden，会把光晕切成方块，
+   所以用 padding + 负 margin 撑出余量（margin-top: auto 保留，用于把摘要推到底部）。 */
+.grid-mini .card-excerpt {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: auto;
+  padding: 0 12px 10px;
+  margin-bottom: -10px;
+}
+.proj-star { margin-left: 4px; color: var(--accent); font-size: var(--fs-sm); }
+
+/* ============ 时间线 ============ */
+.timeline { margin-top: var(--sp-5); }
+/* 多列之后每列变窄，横向「左图 + 右文」会挤成一团。
+   改成纵向卡片：封面在上（满宽 16:9），文字在下。
+   min-width: 0 不能省 —— grid 项默认 min-width: auto，长标题会把列撑爆。 */
+.proj-row {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  align-items: stretch; width: 100%; min-width: 0;
+}
+.proj-thumb {
+  width: 100%; aspect-ratio: 16 / 9;
+  object-fit: cover; border-radius: 6px; border: 1px solid var(--border); flex: none;
+}
+.proj-main { min-width: 0; flex: 1; }
+.proj-name { font-weight: 600; }
+
+/* ============ 文章 / 项目详情 ============ */
+.article {
+  max-width: 780px; margin: 0 auto;
+  /* 同样不再自带深黑底，由内容区整块承担 */
+  position: relative;
+  z-index: 1;
+}
+.article-title { margin-bottom: var(--sp-2); }
+.article-date { color: var(--text-faint); font-size: var(--fs-sm); }
+.article-tags { margin-top: var(--sp-2); }
+.article-excerpt { color: var(--text-dim); margin-top: var(--sp-3); }
+.article-cover { margin-top: var(--sp-3); }
+/* 文章信息行：标题 / 日期 / 标签之下，正文之上 */
+.article-meta {
+  margin-top: var(--sp-3);
+  color: var(--text-faint);
+}
+/* 返回总览 */
+.back-link {
+  display: inline-block;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  margin-bottom: var(--sp-3);
+}
+.back-link:hover { color: var(--accent-text); }
+
+.prev-next {
+  display: flex; justify-content: space-between; gap: var(--sp-4);
+  margin-top: var(--sp-5); padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+.pn-right { text-align: right; }
+.prev-next a { font-size: var(--fs-sm); }
+
+.proj-links { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.term-btn {
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  padding: 6px 14px;
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius);
+  color: var(--accent-text);
+  transition: all .18s ease;
+}
+.term-btn:hover { border-color: var(--accent); box-shadow: 0 0 var(--glow-blur-strong) var(--accent-soft); }
+
+/* 代码块：行号 + 高亮行
+   行号用固定宽度的绝对定位槽，代码整体右移让出这段宽度 —— 不用负 margin，
+   否则行号会浮到 pre 内边距上和代码叠在一起。
+   line-height 只在这里定一次；空行靠 min-height 撑出一行的高度，不要把行距放大。 */
+.prose pre { counter-reset: line; }
+.prose pre code { display: block; }
+
+.prose pre code .line {
+  display: block;
+  position: relative;
+  padding-left: 3.8em;   /* 行号槽宽 3em + 0.8em 间隙 */
+  min-height: 1.6em;     /* 空行也占一行高（等于 line-height，不会额外撑高） */
+  line-height: 1.6;
+}
+.prose pre code .line::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 3em;            /* 固定宽度，右对齐 */
+  text-align: right;
+  color: var(--text-faint);
+  opacity: .6;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  pointer-events: none;
+}
+
+.prose .highlighted, .prose .line.highlighted { background: var(--accent-faint); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* ============ 关于页 ============ */
+.about-hero { margin-bottom: var(--sp-6); }
+
+/* 可变区域：左边文字、右边大图，区块高度约半屏 */
+.about-row { display: none; }
+html[data-world='org'] .about-row[data-layer='org'],
+html[data-world='buono'] .about-row[data-layer='buono'],
+html[data-world='zilan'] .about-row[data-layer='zilan'] {
+  display: grid;
+  grid-template-columns: 1fr minmax(320px, 48%);
+  gap: var(--sp-5);
+  align-items: center;
+  min-height: 50vh;
+}
+
+/* 右侧大图：半透明、纯装饰、不拦截点击。
+   opacity 只在这一层上，文字层保持完全不透明。 */
+.about-art {
+  /* ⚠️ 本轮：不透明度 38% → **80%**（用户要求） */
+  opacity: .8;
+  pointer-events: none;
+  justify-self: center;
+  width: 100%;
+}
+
+/* 左侧文字：占满自己那一列，靠内边距往里缩，不压到图上 */
+.about-bio {
+  min-width: 0;
+  width: 100%;
+  padding: var(--sp-5) var(--sp-4) var(--sp-5) var(--sp-6);
+  text-align: left;
+}
+.about-bio .prose { text-align: left; }
+.about-bio h2 { margin-bottom: var(--sp-3); }
+
+.about-static { border-top: 1px solid var(--border); padding-top: var(--sp-5); }
+.about-static h2 { margin-bottom: var(--sp-3); }
+/* 网站搭建：演职人员表（credits roll）
+   固定 300px 高，内容从下往上循环滚动，可拖拽，链接始终可点。
+   单列、居中。 */
+.stack-block { margin-bottom: var(--sp-5); }
+.stack-block h2 { margin-bottom: var(--sp-3); }
+
+/* ---- B（首页 / 组织关于页）的双色分色 ----
+   原稿的黑色部分变当前世界强调色，白色部分永远不动。
+   class 由 JS 按实测颜色打上（见 ui.ts 的 inkSvgB），
+   这里用 !important 是为了压过原稿可能带的内联 style="fill:#000"。 */
+.svg-b .b-ink { fill: var(--accent) !important; transition: fill .45s ease; }
+.svg-b .b-ink-stroke { stroke: var(--accent) !important; transition: stroke .45s ease; }
+.svg-b .b-paper { fill: #fff !important; }
+.svg-b .b-paper-stroke { stroke: #fff !important; }
+
+/* 无边框、无圆角 —— 内容像浮在一块黑色光斑上。
+   背景 = 径向椭圆黑斑：中心最浓（0.8），向四周淡出到透明，边缘自然融入页面。
+   （这块黑斑是「垫在文字后面」的底，不是框，所以不能有边框/圆角/overflow 裁切。） */
+/* 光斑：垫在文字后面。夜间是黑色、日间是浅灰（见 tokens.css 的 --credits-bg），
+   色标一律用百分比（px 会被按横轴归一化，见下面 mask 的注释）。
+   范围收窄：Rx = 40%×宽、Ry = 130px（与 mask 的 Ry 一致），
+     - 纵向：到 dy=130 全透明，正好等于 mask 全透明的位置 —— 文字始终踩在光斑上
+     - 横向：内容最宽只到 ±154px，t≈0.36 仍在 40% 的实心区内，边缘才淡出 */
+.credits {
+  position: relative;
+  height: 300px;
+  /* ⚠️ 板块背景移到了 ::after：图层顺序必须是
+     网格 → 深黑底 → 板块背景 → 内容。
+     背景写在元素自身的话会画在所有子元素**之下**，深黑底就压不住它了。 */
+  cursor: grab;
+  /* 按住拖拽时不要选中文字，否则会把整块刷蓝 */
+  user-select: none;
+  -webkit-user-select: none;
+
+  /* 必须裁切：轨道高 818px，不裁就会溢出并把整个页面撑高（多出一大片可滚动区域）。
+     这里是安全的 —— mask 在距中心 150px 处已全透明，而容器半高正好 150px，
+     所以被裁掉的部分本来就完全不可见，不会出现「被框住」的硬边。 */
+  overflow: hidden;
+  /* 滚到头不要再往外传，否则整页会跟着滚、位置错乱 */
+  overscroll-behavior: contain;
+  /* 触摸设备上：手指在这里滑动只翻滚内容，不要被浏览器当成滚页面 */
+  touch-action: none;
+}
+/* 深黑衬底层（第 2 层）：网格 → 深黑底 → 板块背景 → 内容。
+   本轮去掉了 backdrop-filter，这层退化成「跟板块背景同形状的深色底」，
+   作用仍然是让板块背景（第 3 层）压在深色之上、不至于和网格糊在一起。
+   形状/羽化跟随板块背景 —— 用和 --credits-bg 同一个椭圆渐变做 mask
+   （只取形状，不带颜色），所以边缘羽化完全一致，不会出现矩形硬边。 */
+.credits::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--glass-bg);
+  -webkit-mask-image: var(--credits-mask);
+  mask-image: var(--credits-mask);
+}
+/* 板块背景（第 3 层）：画在深黑底之上、内容之下 */
+.credits::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--credits-bg);
+}
+/* 同上，也别让链接被原生拖走（配合 ui.ts 里的 dragstart 拦截） */
+.credits a { -webkit-user-drag: none; }
+.credits.is-dragging { cursor: grabbing; }
+
+/* 径向椭圆渐隐：中间清晰，四周向椭圆边缘渐渐淡出。
+   用 mask 而不是伪元素遮罩 —— 伪元素只能做上下渐变，做不出四周边缘。
+
+   参数：
+     椭圆横轴 90% 宽 / 纵轴 58% 高（纵轴半径 58%×300≈174px，略大于半高 150px）
+     38% 以内全清晰 → 中间约 132px 是完全清楚的（约 5 行）
+     82% 处已全透明 → 82%×174≈143px < 150px，所以上下边缘一定完全淡出，
+                       循环衔接处（底部）看不到接缝
+   横向：内容居中最宽约 360px，半宽 180px ≈ 18%，落在清晰区内，不会被淡掉边缘文字。
+
+   注意 mask 只影响绘制、不影响命中测试，链接照常可点。 */
+.credits-view {
+  position: absolute;
+  /* 内容（第 4 层）：必须压在深黑底(0) 和板块背景(1) 之上 */
+  z-index: 2;
+  /* 与区域同高（不再上下留余量）：多出来的部分会贡献滚动溢出、把页面撑高。
+     反正 mask 在容器边缘处已是全透明，多留也看不见。 */
+  inset: 0;
+  overflow: hidden;
+  /* 只写百分比，不写 px —— 这是个坑：实测 Chrome 会把椭圆渐变里的 <length> 色标
+     按「横轴半径」归一化（这里的 45px 被当成 45/972≈4.6%），
+     结果纵向在距中心仅 ~27px 处就全透明了，正文几乎全被淡掉（就是「文字看不见」的真因）。
+
+     百分比则是直接对应归一化位置 t，行为可预期：
+       t = sqrt((dx/Rx)² + (dy/Ry)²)，Rx=80%×宽、Ry=130px
+       #000 40%  → t ≤ 0.40 全清晰：纵向 ±52px（约 4 行）、横向 ±346px（内容只到 ±164px）
+       transparent 100% → t=1 全透明：纵向 dy=130px
+     Ry 取 130 而不是 150（半高）是故意的 —— 留 20px 余量，
+     保证到容器上下边缘时一定已经全透明，循环衔接不会露馅。 */
+  /* ⚠️ 本轮：文字的渐隐改用和背景**同一条** --credits-mask。
+     原来这里自己写了一份「Rx 80% / 实色到 40% / 线性降到 100%」，
+     和背景的「Rx 40% / 实色到 40%」形状不一致 —— 横向羽化对不上，
+     文字会在背景已经淡尽的地方还清晰可见（羽化范围不对）。
+     统一之后形状、实色范围、羽化曲线三者完全一致。 */
+  -webkit-mask-image: var(--credits-mask);
+  mask-image: var(--credits-mask);
+}
+
+.credits-track { will-change: transform; }
+
+/* 单列 + 居中：整块作为一个居中的两列网格（角色 | 值）。
+   用 grid 而不是逐行 flex center —— 后者每行独立居中，角色名会随值长短左右浮动、排不齐。
+   grid 下整块居中、同时角色名一列右对齐，两者兼得。 */
+.credits-list {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  align-items: baseline;
+  column-gap: var(--sp-3);
+  row-gap: 6px;
+  /* 顶部留半屏（150px）空白：开场时第一行正好落在可视区中心，
+     它上面是这段空白而不是列表尾部 —— 否则「框架」紧挨着「代码」，很怪。
+     只加顶部不加底部：两份内容之间的间隔就只有 150px < 可视区 300px，
+     滚动过程中任何时刻都还有内容可见，不会空屏。 */
+  padding: 150px var(--sp-4) var(--sp-3);
+}
+/* 行的 DOM 结构保留，但让它的两个孩子直接参与上面的网格 */
+.credits-row { display: contents; }
+/* 配色跟光斑走：夜间亮字（--credits-* 在 tokens.css 的 dark 段），
+   日间深字（light 段）。不能写死白色 —— 日间光斑是浅灰，白字等于隐形。 */
+.credits-k {
+  justify-self: end;
+  font-size: var(--fs-xs);
+  color: var(--credits-k);
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.credits-v {
+  font-size: var(--fs-sm);
+  text-align: left;
+  color: var(--credits-v);
+}
+
+/* 「构思」跟世界变：三个世界各一份，只显示当前世界那份 */
+.credits-world { display: none; }
+html[data-world='org'] .credits-world[data-layer='org'],
+html[data-world='buono'] .credits-world[data-layer='buono'],
+html[data-world='zilan'] .credits-world[data-layer='zilan'] { display: inline; }
+
+/* 可点击的词：强调色 + 加粗。用 --credits-link（tokens.css 里按明暗各配一套：
+   夜间是亮色版 --accent-on-dark，日间是深色版 --accent-text）——
+   写死任一种，另一种模式下都会看不见。 */
+.credits-link {
+  color: var(--credits-link);
+  font-weight: 700;
+  text-decoration: none;
+  transition: color var(--t-theme) ease, filter .18s ease;
+}
+.credits-link:hover { filter: brightness(1.25); text-decoration: underline; }
+
+@media (max-width: 900px) {
+  .credits-list { padding: var(--sp-3); column-gap: var(--sp-2); }
+}
+
+/* 友情链接：整块居中 */
+.friends-block { text-align: center; }
+.friends-block h2 { text-align: center; margin-bottom: var(--sp-3); }
+
+/* ---- 展开后是一片「宇宙」 ----
+   区域高度由 JS 按内容量出来（链接多少、图片大小都影响），不写死。 */
+.friend-field {
+  position: relative;
+  height: 0;
+  overflow: hidden;
+  margin-top: var(--sp-3);
+  /* 展开动画：高度 + 透明度一起过渡，不要瞬间出现 */
+  opacity: 0;
+  transition: height .45s cubic-bezier(.22, .8, .3, 1), opacity .4s ease;
+  /* 四周渐隐（上一轮的要求）：只写百分比 —— 实测 Chrome 会把椭圆渐变里的
+     <length> 色标按「横轴半径」归一化，写 px 会得到完全不是预期的衰减曲线。 */
+  -webkit-mask-image: radial-gradient(ellipse 100% 100% at 50% 50%, #000 62%, transparent 100%);
+  mask-image: radial-gradient(ellipse 100% 100% at 50% 50%, #000 62%, transparent 100%);
+}
+.friend-field.open { opacity: 1; }
+
+/* 椭圆星云背景。
+   大小由 JS 按内容量出来（--gw / --gh），所以链接多就大、少就小。
+   closest-side ellipse + 56% 处才开始淡出 = 「中间一大块实色，只在边缘渐变到透明」。
+   border-radius: 50% 不是必须的（渐变本身就是椭圆），但留着能让边缘更干净。 */
+.friend-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  /* 62% 之前都是实色，只有 62%→100% 这一段才渐隐到透明 —— 「中间实色，只在边缘渐隐」。
+     外层再混一层 transparent 给中心一个 alpha（夜间 82%、日间 88%，见 tokens.css），
+     否则会是实心色块，盖住下面的页面底纹。 */
+  background: radial-gradient(closest-side ellipse,
+      var(--friend-bg) 0%,
+      var(--friend-bg) 62%,
+      transparent 100%);
+  /* 星云本身颜色就是「黑 + 世界色」（见 --friend-bg），所以它同时充当了
+     深黑衬底和板块背景两层，不需要再单独叠一层。
+     这里再叠一层与背景同羽化的 mask，让边缘渐渐淡出而不是硬的椭圆边。
+     .friend-glow 是空元素（没有子元素），所以在这里用 mask 是安全的 ——
+     mask 会连子元素一起裁，用在有内容的容器上会把文字裁掉。 */
+  -webkit-mask-image: radial-gradient(closest-side ellipse, #000 0%, #000 62%, transparent 100%);
+  mask-image: radial-gradient(closest-side ellipse, #000 0%, #000 62%, transparent 100%);
+  transition: width .5s cubic-bezier(.22, .8, .3, 1), height .5s cubic-bezier(.22, .8, .3, 1);
+}
+
+/* 链接：文字 or 图片，绝对定位，位置/漂浮参数由 JS 写 */
+.friend-item {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: var(--fsz, 16px);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fi-color, var(--accent-text));
+  text-decoration: none;
+  animation-name: friend-drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  /* 只过渡 filter，不要过渡 transform ——
+     ① 漂浮动画每帧都在改 transform，给它加过渡毫无意义；
+     ② 更麻烦的是：一旦动画被移除（比如测试里冻结、或 reduced-motion），
+        transform 会从当前动画值「过渡」回 none，中间态会让位置飘移，
+        实测造成偶发的「两个链接重叠」误判。放大改挂在内层 .friend-in 上。 */
+  transition: filter .18s ease;
+  will-change: transform;
+  z-index: 2;
+}
+
+/* 放大挂在内层 —— 外层的 transform 被漂浮动画每帧占着，写在它身上不生效 */
+.friend-in {
+  display: inline-flex;
+  align-items: center;
+  transition: transform .18s ease;
+}
+.friend-item:hover, .friend-item:focus-visible { z-index: 3; }
+.friend-item:hover .friend-in,
+.friend-item:focus-visible .friend-in { transform: scale(1.18); }
+.friend-item:hover, .friend-item:focus-visible {
+  filter: drop-shadow(0 0 14px var(--fi-color, var(--accent)));
+}
+
+/* 展开后逐个浮现（错开 --ad）。
+   用 backwards 而不是 both/forwards：backwards 只在延迟期间套用起始帧
+   （opacity 0），动画结束后不保留 —— 否则 animation-fill 会一直压着
+   transform，把上面的 hover 放大也一起压掉。 */
+.friend-field.open.is-laid .friend-item > .friend-in {
+  animation: friend-appear .5s ease backwards;
+  animation-delay: var(--ad, 0s);
+}
+
+@keyframes friend-appear {
+  from { opacity: 0; transform: translateY(12px) scale(.88); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 图片型链接：大边限制在 40~80px（--sz 由 JS 随机），两边都设上限
+   才能做到「不拉伸、不裁剪、保持各自比例」 */
+.friend-item.is-img img {
+  display: block;
+  max-width: var(--sz, 60px);
+  max-height: var(--sz, 60px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+/* 装饰：星星 / 月亮（夜间）、云朵 / 太阳（日间）。纯背景，不拦点击。
+   颜色用 currentColor，由 --deco-color 按主题给，SVG 内部写 fill="currentColor"。 */
+.friend-deco {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  pointer-events: none;
+  z-index: 0;
+  /* 星星 / 云朵用 --deco-small，月亮 / 太阳用 --deco-big（更暖更亮） */
+  color: var(--deco-small, #ffffff);
+  opacity: 0;
+  transition: opacity .7s ease;
+  animation-name: friend-drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+.friend-field.open .friend-deco { opacity: var(--op, .6); }
+.friend-deco[data-kind='moon'], .friend-deco[data-kind='sun'] { color: var(--deco-big, #ffe6a3); }
+.friend-deco :global(svg) { display: block; width: 100%; height: 100%; }
+
+@keyframes friend-drift {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  20%  { transform: translate(var(--dx), calc(var(--dy) * -0.8)) rotate(2deg); }
+  40%  { transform: translate(calc(var(--dx) * 0.5), var(--dy)) rotate(-1.5deg); }
+  60%  { transform: translate(calc(var(--dx) * -0.9), calc(var(--dy) * 0.7)) rotate(2.5deg); }
+  80%  { transform: translate(calc(var(--dx) * -0.3), calc(var(--dy) * -1)) rotate(-2deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+/* ============ 响应式补充 ============ */
+@media (max-width: 900px) {
+  /* 窄屏改为上下堆叠，图在文字上方。260px 留两侧余量，免得顶到屏幕边缘。
+     窄屏不再往里收 —— 屏幕本来就窄，再留白会更挤 */
+  .home-hero { flex-direction: column; width: 100%; }
+  .hero-text, .hero-art { flex: none; width: 100%; }
+  .hero-art { order: -1; max-width: 260px; align-self: center; }
+  .home-cols { grid-template-columns: 1fr; }
+  html[data-world='org'] .about-row[data-layer='org'],
+  html[data-world='buono'] .about-row[data-layer='buono'],
+  html[data-world='zilan'] .about-row[data-layer='zilan'] {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .about-art { order: -1; max-width: 300px; }
+  .about-bio { padding: var(--sp-5) var(--sp-4); }
+  .grid-mini { grid-template-columns: repeat(2, 1fr); }
+  .article { max-width: 100%; }
+  .tag-bar { flex-direction: column; }
+  .tl-items { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   音频播放条（:::audio） / MIDI 合成播放
+   ⚠️ 是「一条」，不是视频播放器那种大块：单行 flex，高度固定。
+   ══════════════════════════════════════════════════════════ */
+.audio-player {
+  --bar-h: 40px;
+  margin: var(--sp-4) 0;
+  padding: 0 var(--sp-3);
+  height: var(--bar-h);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--bar-h) / 2);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-2);
+  overflow: hidden;
+}
+.audio-player:hover { border-color: var(--accent-soft); }
+.audio-player:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft), 0 0 var(--glow-blur) -4px var(--accent);
+}
+/* 真正的 <audio> 只用来发声，不显示原生控件 */
+.audio-player > audio { display: none; }
+
+.audio-btn {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition: color .18s, text-shadow .18s;
+}
+.audio-btn:hover { color: var(--accent); text-shadow: 0 0 var(--glow-blur) -6px var(--accent); }
+
+.audio-play {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 10px;
+}
+.audio-play:hover { border-color: var(--accent); }
+
+/* ⚠️ flex: 0 0 auto（不收缩）：
+   之前是 0 1 auto，空间紧张时标题会被压到 min-width，显示成「背..」。
+   让进度条承担压缩（它有 min-width 兜底），标题保持自然宽度。 */
+.audio-title {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+}
+.audio-tag {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  border: 1px solid var(--accent-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: .04em;
+}
+
+/* BPM 标记：和 MIDI 标记区分开，用中性色避免抢注意力 */
+.audio-bpm {
+  color: var(--fg-dim);
+  border-color: var(--border);
+}
+.audio-bpm[data-empty] { display: none; }
+
+.audio-seek {
+  flex: 1 1 auto;
+  min-width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+  touch-action: none;
+}
+.audio-seek > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 var(--glow-blur) -4px var(--accent);
+}
+
+.audio-time {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* b = 当前时间，i = 「/ 总时长」（斜体被重置了，这里只用语义标签省 class） */
+.audio-time > b, .audio-time > i { font-style: normal; font-weight: inherit; }
+.audio-rate { flex: none; min-width: 30px; text-align: center; }
+.audio-spec {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 24px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  opacity: 0.95;
+  pointer-events: none;      /* 不抢点击 */
+}
+/* 窄屏：频谱先让位，保证标题和时间可读 */
+@media (max-width: 720px) {
+  .audio-spec { display: none; }
+}
+
+.audio-vol {
+  flex: none;
+  width: 56px;
+  margin: 0;
+  /* height / appearance / background 走上面与视频共用的规则，保持一致 */
+}
+
+@media (max-width: 620px) {
+  .audio-title { max-width: 42%; }
+  .audio-vol { width: 40px; }
+  .audio-tag { display: none; }
+  .audio-bpm { display: none; }
+  /* 窄容器优先保标题：总时长让位（实测能腾出约 47px） */
+  .audio-time i { display: none; }
+}
+
+/* 外链音乐平台嵌入：高度随平台（--embed-h），背景随平台（--embed-bg）。
+   ⚠️ 尺寸/背景都挂在 iframe 上（见上面 .player-embed 的重构说明）——
+      音乐平台的 iframe 内容大多是**透明**的（网易云尤其明显），
+      背板色必须给对：给成视频那套 #000 就会在白色播放器周围露出一圈黑。
+      所以每个平台在插件里额外输出 --embed-bg（浅色平台白、Spotify 深色）。 */
+.music-embed iframe {
+  aspect-ratio: auto;
+  height: var(--embed-h, 110px);
+  background: var(--embed-bg, #fff);
+}
+
+/* ============================================================
+   静态站资源防护（配合 src/scripts/assetGuard.ts）
+   ------------------------------------------------------------------
+   GitHub Pages 纯静态托管：这里只是「减速带」，不是安全边界。
+   F12 Network / curl / 磁盘缓存不受任何 CSS 或前端 JS 影响。
+
+   ⚠️ 只作用于媒体标签本身，**不要**写成 .prose { user-select:none }：
+      正文、figcaption、说明文字必须仍能选中复制，否则误伤远大于收益。
+   ============================================================ */
+img, video, audio, canvas, picture {
+  /* Chrome / Safari：禁掉原生「把图片拖出去」 */
+  -webkit-user-drag: none;
+  user-drag: none;
+  /* iOS / iPadOS 长按不再弹出「存储图像 / 拷贝」 */
+  -webkit-touch-callout: none;
+  /* 拖选时不会顺带框住媒体再拖走 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* 灯箱里放大后的图片是靠 mousedown + 平移自定义的，不是原生拖拽；
+   禁掉原生拖拽反而让它更稳（原生拖拽会抢走指针序列）。 */
+.lightbox img { -webkit-user-drag: none; user-drag: none; }
+/* 截图预览是用户主动导出的产物，允许正常操作（JS 侧用 data-guard-off 放行） */
+.shot-box img { user-select: auto; }
+
+
+/* ---------- 资源下载按钮（默认开启，dl="0" 关掉） --------------
+   站内本地文件默认都输出；外链平台 / 跨域图床不输出（download 会失效
+   变成另开窗口）。防护层继续拦右键 / 拖拽 / 中键，按钮是作者给的正经入口。
+   样式跟着现有控件条走：视频里是 .player-bar 的一员（全屏随浮层淡出），
+   音频 / MIDI 里是单行胶囊的最后一个元素，相册里跟在 caption 后面。 */
+.asset-dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .18s ease, border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.asset-dl:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+  background: var(--accent-faint);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.asset-dl:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.asset-dl > span[aria-hidden] { font-size: 13px; line-height: 1; }
+.gallery-caption .asset-dl { margin-left: var(--sp-2); vertical-align: middle; }
+/* 窄屏音频条本来就挤，只留箭头，完整文件名仍在 title / aria-label 里 */
+@media (max-width: 640px) {
+  .audio-player .asset-dl-t, .midi-player .asset-dl-t { display: none; }
+  .asset-dl { padding: 0 6px; }
+}

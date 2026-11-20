@@ -1,0 +1,29 @@
+---
+/** 博客页：搜索框 + 标签 + 文章卡片；内容分世界，URL 不变。 */
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import BlogExplorer from '../../components/BlogExplorer';
+
+const articleList = (await getCollection('articles')).map((a) => ({
+  slug: a.id,
+  world: a.data.world,
+  title: a.data.title,
+  pubDate: a.data.pubDate.toISOString(),
+  updated: a.data.updated?.toISOString(),
+  tags: a.data.tags,
+  excerpt: a.data.excerpt,
+  cover: a.data.cover,
+  pinned: a.data.pinned,
+  kind: a.data.kind,
+  source: a.data.source,
+  sourceUrl: a.data.sourceUrl,
+  url: `/blog/${a.id}`,
+}));
+---
+
+<BaseLayout title="博客 · OnOiduts工业">
+  <div class="container page">
+    <h1 class="page-title">博客</h1>
+    <BlogExplorer client:load articles={articleList} />
+  </div>
+</BaseLayout>

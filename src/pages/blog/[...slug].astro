@@ -1,0 +1,102 @@
+---
+/** 文章详情页 */
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import TOC from '../../components/TOC.astro';
+import { fmtDate, readMinutes, countChars } from '../../utils/format';
+import { IDENTITIES } from '../../data/identities';
+
+export async function getStaticPaths() {
+  const all = await getCollection('articles');
+  const sorted = [...all].sort(
+    (a, b) => a.data.pubDate.getTime() - b.data.pubDate.getTime()
+  );
+  return all.map((entry) => {
+    const sameWorld = sorted.filter((x) => x.data.world === entry.data.world);
+    const i = sameWorld.findIndex((x) => x.id === entry.id);
+    return {
+      params: { slug: entry.id },
+      props: {
+        entry,
+        prev: i > 0 ? sameWorld[i - 1] : null,
+        next: i < sameWorld.length - 1 ? sameWorld[i + 1] : null,
+      },
+    };
+  });
+}
+
+interface Props {
+  entry: CollectionEntry<'articles'>;
+  prev: CollectionEntry<'articles'> | null;
+  next: CollectionEntry<'articles'> | null;
+}
+const { entry, prev, next } = Astro.props;
+const { Content, headings } = await render(entry);
+const d = entry.data;
+const chars = countChars(entry.body ?? '');
+const author = IDENTITIES[d.world].name;
+---
+
+<BaseLayout title={`${d.title} · ${author}`} description={d.excerpt} withProgress>
+  <div class="container page" data-force-world={d.world}>
+    <TOC headings={headings} />
+
+    <article class="article">
+      <h1 class="article-title">{d.title}</h1>
+
+      <div class="article-date mono">
+        {fmtDate(d.pubDate)}{d.updated ? ` · 更新于 ${fmtDate(d.updated)}` : ''}
+      </div>
+
+      <div class="card-tags article-tags">
+        {d.tags.map((t) => (
+          <a class="tag" href={`/blog?tag=${encodeURIComponent(t)}&world=${d.world}`}>{t}</a>
+        ))}
+      </div>
+
+      <div class="article-meta mono t-sm">
+        <span class={`kind-badge${d.kind === 'reprint' ? ' is-reprint' : ''}`}>
+          {d.kind === 'reprint' ? '转载' : '原创'}
+        </span>
+        作者：{author} · 约 {readMinutes(chars)} 分钟 · {chars} 字
+        {d.kind === 'reprint' && (d.source || d.sourceUrl) && (
+          <span class="article-source">
+            {' · 来源：'}
+            {d.sourceUrl ? (
+              <a href={d.sourceUrl} target="_blank" rel="noopener noreferrer">{d.source || d.sourceUrl}</a>
+            ) : (
+              d.source
+            )}
+          </span>
+        )}
+      </div>
+
+      <p class="article-excerpt">{d.excerpt}</p>
+
+      {d.cover && <img class="cover article-cover" src={d.cover} alt="" />}
+
+      <div class="prose">
+        <Content />
+      </div>
+
+      <nav class="prev-next">
+        <div class="pn-left">
+          {prev && (
+            <>
+              <div class="faint t-xs">上一篇</div>
+              <a href={`/blog/${prev.id}`}>{prev.data.title}</a>
+            </>
+          )}
+        </div>
+        <div class="pn-right">
+          {next && (
+            <>
+              <div class="faint t-xs">下一篇</div>
+              <a href={`/blog/${next.id}`}>{next.data.title}</a>
+            </>
+          )}
+        </div>
+      </nav>
+    </article>
+  </div>
+</BaseLayout>

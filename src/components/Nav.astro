@@ -1,0 +1,92 @@
+---
+/**
+ * 导航栏：全屏，内容占 88%；Logo 左对齐（SVG-A）；导航项 + 明暗按钮靠右；
+ * 高度 72px，间距 32px；当前页发光高亮；悬停发光 + 下划线；固定顶部。
+ * 移动端：汉堡菜单，从右滑出浮层，明暗按钮在浮层右上角。
+ * Logo 点击只回首页，不切世界。
+ */
+import SvgA from './SvgA.astro';
+import ThemeToggle from './ThemeToggle.astro';
+
+const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const items = [
+  { href: '/projects', label: '项目' },
+  { href: '/blog', label: '博客' },
+  { href: '/about', label: '关于' },
+];
+const isActive = (href: string) => path === href || path.startsWith(href + '/');
+---
+
+<header class="nav">
+  <div class="nav-inner">
+    <SvgA />
+    <nav class="nav-links">
+      {
+        items.map((i) => (
+          <a class="nav-link" href={i.href} aria-current={isActive(i.href) ? 'page' : undefined}>
+            {i.label}
+          </a>
+        ))
+      }
+      <span class="nav-spacer"></span>
+      <ThemeToggle id="theme-toggle" />
+    </nav>
+
+    <button class="theme-btn hamburger" id="hamburger" type="button" aria-label="打开菜单">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <path d="M3 6h18M3 12h18M3 18h18" />
+      </svg>
+    </button>
+  </div>
+</header>
+
+<div class="mobile-panel" id="mobile-panel">
+  <div class="panel-top">
+    <ThemeToggle id="theme-toggle-mobile" />
+    <button class="theme-btn" id="mobile-close" type="button" aria-label="关闭菜单">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <path d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    </button>
+  </div>
+  <nav class="nav-links">
+    {
+      items.map((i) => (
+        <a class="nav-link" href={i.href} aria-current={isActive(i.href) ? 'page' : undefined}>
+          {i.label}
+        </a>
+      ))
+    }
+  </nav>
+</div>
+
+<script>
+  /**
+   * 点导航链接 → 标记「下一页跳过加载遮罩」。
+   *
+   * 为什么用 sessionStorage 而不是直接上 View Transitions：
+   * 这套是纯静态 MPA，导航本质仍是整页刷新；用标记跳过遮罩最轻，
+   * 不用改渲染架构。标记在下一页 head 的 inline script 里读完即清，
+   * 所以真正的刷新 / 新标签页打开仍然会正常显示加载态。
+   *
+   * 只认站内同源的普通跳转：外链、锚点、新窗口打开都不算。
+   */
+  (function () {
+    var KEY = 'onoiduts-skip-boot';
+    var mark = function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a') : null;
+      if (!a) return;
+      if (a.target && a.target !== '_self') return;      // 新窗口
+      if (a.hasAttribute('download')) return;
+      var href = a.getAttribute('href') || '';
+      if (!href || href.charAt(0) === '#') return;       // 锚点
+      try {
+        if (new URL(a.href, location.href).origin !== location.origin) return; // 外链
+      } catch (err) {
+        return;
+      }
+      try { sessionStorage.setItem(KEY, '1'); } catch (err) {}
+    };
+    document.addEventListener('click', mark, true);
+  })();
+</script>

@@ -1,0 +1,91 @@
+---
+/**
+ * 主页：介绍文字 + B 不变；最新文章跟世界变；精选项目只变色。
+ */
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import SvgB from '../components/SvgB.astro';
+import LatestFeed from '../components/LatestFeed';
+import { Content as HomeIntro } from '../content/home-intro.md';
+import { fmtDate } from '../utils/format';
+
+const articleList = (await getCollection('articles')).map((a) => ({
+  slug: a.id,
+  world: a.data.world,
+  title: a.data.title,
+  pubDate: a.data.pubDate.toISOString(),
+  updated: a.data.updated?.toISOString(),
+  tags: a.data.tags,
+  excerpt: a.data.excerpt,
+  cover: a.data.cover,
+  pinned: a.data.pinned,
+  kind: a.data.kind,
+  source: a.data.source,
+  sourceUrl: a.data.sourceUrl,
+  url: `/blog/${a.id}`,
+}));
+
+const featured = (await getCollection('projects'))
+  .filter((p) => p.data.featured)
+  .sort((a, b) => b.data.created.getTime() - a.data.created.getTime())
+  .slice(0, 4);
+---
+
+<BaseLayout title="OnOiduts工业">
+  <div class="container page">
+    <!-- 上半：介绍文字 + B（B 占 35~50%，垂直居中） -->
+    <section class="home-hero">
+      <div class="hero-text">
+        <div class="prose intro">
+          <HomeIntro />
+        </div>
+      </div>
+      <div class="hero-art">
+        <SvgB variant="hero" />
+      </div>
+    </section>
+
+    <!-- 下半：最新文章（跟世界变） + 精选项目 -->
+    <section class="home-cols">
+      <div class="col">
+        <div class="sec-head">
+          <h2>最新文章</h2>
+          <a class="more-link" href="/blog">查看全部</a>
+        </div>
+        <LatestFeed client:load articles={articleList} />
+      </div>
+
+      <div class="col">
+        <div class="sec-head">
+          <h2>精选项目</h2>
+          <a class="more-link" href="/projects">查看全部</a>
+        </div>
+        {
+          featured.length ? (
+            <div class="grid-mini">
+              {featured.map((p) => (
+                <a class="card" href={`/projects/${p.id}`}>
+                  <img class="cover" src={p.data.cover} alt="" loading="lazy" />
+                  <div class="card-title">
+                    {p.data.name}
+                    {p.data.featured && <span class="proj-star">★</span>}
+                  </div>
+                  <div class="card-date">
+                    <div>{fmtDate(p.data.created)}</div>
+                    <div>更新于 {fmtDate(p.data.updated)}</div>
+                  </div>
+                  <div class="card-excerpt">{p.data.summary}</div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div class="terminal">
+              <div>&gt; 这里还没有项目</div>
+              <div>&gt; 等待更新...</div>
+            </div>
+          )
+        }
+      </div>
+    </section>
+  </div>
+</BaseLayout>

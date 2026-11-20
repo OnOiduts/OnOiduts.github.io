@@ -1,0 +1,15 @@
+---
+/**
+ * 页脚：左边版权，右边随机文字（从文件读随机行，每次刷新随机，无点击行为）。
+ * 配色跟世界变，内容不变。所有页面都有。
+ */
+const year = 2026;
+---
+
+<!-- 玻璃铺满全屏宽，内容用 .footer-inner 收回内容区宽度 -->
+<footer class="footer">
+  <div class="footer-inner">
+    <span>© {year} OnOiduts工业</span>
+    <span id="footer-random" data-source="/footer-lines.txt"></span>
+  </div>
+</footer>

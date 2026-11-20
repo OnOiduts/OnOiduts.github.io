@@ -1,0 +1,26 @@
+---
+/** 404：静态页面，纯黑白灰，无强调色。 */
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="404 · OnOiduts工业">
+  <div class="container page page-404">
+    <div class="terminal">
+      <div class="err">&gt; Error 404</div>
+      <div>&gt; 这里什么都没有</div>
+      <div class="back"><a href="/">&gt; [返回]</a></div>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  /* 404 不跟随世界强调色 */
+  .page-404 {
+    --accent: #8a8a93;
+    --accent-soft: rgba(138, 138, 147, 0.14);
+    --accent-faint: rgba(138, 138, 147, 0.07);
+    --accent-text: #8a8a93;
+  }
+  .page-404 .back { margin-top: 24px; }
+  .page-404 a:hover { text-shadow: none; }
+</style>
