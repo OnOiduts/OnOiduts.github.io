@@ -26,8 +26,12 @@ jobs:
         uses: actions/checkout@v5
       - name: Install, build, and upload your site
         # 官方 Astro Action：自动装依赖、跑 astro build、把 dist/ 传成 Pages 产物
-        # 项目就在仓库根目录，不用写 path；没有 lock 文件时它按 npm 装
+        # 项目就在仓库根目录，不用写 path
+        # 仓库里附了 package-lock.json；万一没传上去，也要靠下面这行写明用 npm，
+        # 否则 Action 会报 "No lockfile found" 直接失败
         uses: withastro/action@v5
+        with:
+          package-manager: npm
 
   deploy:
     needs: build

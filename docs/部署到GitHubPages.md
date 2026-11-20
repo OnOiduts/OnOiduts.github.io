@@ -47,7 +47,7 @@ npm run build
 
 跑完会多出一个 `dist/` 文件夹，里面是生成好的网页。这一步过了，GitHub 那边基本不会出问题。
 
-> 顺带一句：项目里现在没有 `package-lock.json`，能正常部署，但依赖版本每次可能略有浮动。想更稳，跑完 `npm install` 把生成的 `package-lock.json` 一起提交上去。
+> 项目里已经附了 `package-lock.json`（锁住依赖版本），部署脚本里也写明了 `package-manager: npm`。两个都在，CI 装依赖不会出问题。如果你是从旧包升级的，记得把这两个文件一起推上去——只覆盖 `deploy.yml` 也能过，但版本不锁。
 
 ### 第 2 步：在 GitHub 建仓库
 
@@ -73,6 +73,8 @@ git push -u origin main
 如果你本地已经是 `master` 分支（当前这份就是），把上面两行的 `main` 换成 `master` 就行 —— 部署脚本 `main` 和 `master` 都认，不用特地改分支名。
 
 `.gitignore` 已经排除了 `node_modules/`、`dist/`、`.astro/`，这些不会传上去，仓库是干净的。
+
+> **用 GitHub Desktop 的话**：上面这几行命令换成「把解压出来的文件复制进仓库文件夹 → 左下角填提交说明 → 点 Commit → 再点顶部的 Push origin」。**提交和推送是两下，只提交不推，线上什么都不会变**。复制时别漏了隐藏文件夹 `.github/`，里面的 `deploy.yml` 就是自动部署的开关。第 3 步里的 `package-lock.json` 也要一起放进去。
 
 ### 第 4 步：改一个关键设置（最容易漏）
 
@@ -123,8 +125,36 @@ https://onoiduts.github.io
 | 页面能开，图片音频视频全裂 | 仓库名不是 `OnOiduts.github.io`，或者项目页忘了改 `base` |
 | Actions 一直没触发 | 推的分支不在 `main`/`master`，或 `deploy.yml` 没传上去（`.github/` 是隐藏文件夹，别漏） |
 | Actions 红了 | 点进去看日志，最常见是 `npm run build` 本地就报错；先把第 1 步跑通 |
+| **build 6 秒就红，日志写 `No lockfile found` / `Please specify your preferred "package-manager"`** | 见下面这一节 |
 | 部署成功但看到的还是旧页面 | 浏览器缓存，`Ctrl+Shift+R`；或看 Actions 里部署的到底是哪次提交 |
 | 改了文章没变化 | Astro 开发时改插件不会热重编已经编译过的 markdown，线上是全新构建，不会有这个问题；确认 push 成功即可 |
+
+### 最常见的红叉：`No lockfile found`
+
+**长这样**：`build` 几秒钟就失败，`deploy` 那步被跳过；展开 `Install, build, and upload your site` → `Check lockfiles`，日志是：
+
+```
+No lockfile found.
+Please specify your preferred "package-manager" in the action configuration.
+Error: Process completed with exit code 1.
+```
+
+**为什么**：官方 Astro Action 要先判断你这个项目用 npm、yarn 还是 pnpm，判断依据是仓库里的锁文件（`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`）。**一个都没有时它不会自动当 npm 处理，而是直接报错** —— 这是官方 Action 的行为，不是文章写错、也不是 Pages 设置错了。
+
+**新包里已经两层都补好了**：
+
+1. `.github/workflows/deploy.yml` 里加了 `package-manager: npm`，明确告诉它用 npm；
+2. 附了 `package-lock.json`，锁住依赖版本，Action 也能自己认出来。
+
+**已经在推的仓库怎么修（GitHub Desktop）**：
+
+1. 把新包里的 `.github/workflows/deploy.yml` 复制进仓库，**覆盖同名文件**；顺手把 `package-lock.json` 也放进仓库根目录（和 `package.json` 放一起）
+2. Desktop 左下角填提交说明（比如「修好构建：指定 npm」）→ **Commit** → 顶部 **Push origin**
+3. 推送会自动触发一次新的构建，等它变绿就行
+
+⚠️ **别直接点 Actions 右上角的 Re-run jobs**：代码没改，重跑还是同一个错。另外这次失败**没有部署任何东西**，线上还是之前的状态，不用回滚。
+
+过了这一关，Action 才会真正开始装依赖、跑 `astro build`。**如果新日志在 `npm install` 或 `astro build` 阶段又报错，把日志贴出来**，那就是另一类问题了。
 
 ---
 
