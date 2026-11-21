@@ -2458,3 +2458,14 @@ img, video, audio, canvas, picture {
 .ts-wrap a { color: inherit; text-decoration: underline; text-underline-offset: .18em; }
 .ts-wrap strong, .ts-wrap em, .ts-wrap del, .ts-wrap code { color: inherit; }
 .ts-wrap code { font-size: .9em; }
+
+
+/* 行内快捷：:text[几个字]{color=... size=...}
+   只给颜色 / 字号，不复制 DOM —— 双层描边/渐变走 .ts-wrap 容器。
+   font-size 用变量档位，窄屏跟着全站一起回缩。 */
+.ts-inline {
+  font-size: var(--ts-size, var(--fs-body, 16px));
+  color: var(--ts-color, var(--text, #e6e6ea));
+}
+.ts-inline a { color: inherit; }
+.ts-inline code { font-size: .9em; }
