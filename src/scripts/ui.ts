@@ -974,6 +974,70 @@ const DECO = {
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
+/**
+ * 友情链接图片：悬停沿 Y 轴持续翻转，移开后继续转满一整圈、回到 0 度才停。
+ * 效果来自用户给的 .image-container 那段脚本；移植时修了它两个真问题：
+ *   ① 原脚本每次 mouseenter / mouseleave 都直接调 animateRotation() 新起一条 rAF 链，
+ *      循环里只判断「还在不在转」，于是多条链会同时给角度 +2 → 越转越快、停不下。
+ *      这里用 running 保证每张图片同时只有一条链。
+ *   ② 正在「转回 0」时鼠标再移入，原脚本直接忽略 → 看着像没反应。
+ *      这里 mouseenter 直接取消恢复、接着转。
+ *
+ * transform 必须挂在最内层 <img> 上：
+ *   .friend-item 被 friend-drift 每帧占着 transform（漂浮），
+ *   .friend-in 是 hover 放大 scale(1.18) / friend-appear 的载体，
+ *   只有 img 的 transform 是空的，三者才不打架 —— CSS 一个字都不用改。
+ *
+ * 用 data-flip 跟着 DOM 做幂等：initUI() 可能被重复调用（页面切换 / View
+ * Transitions），randomize() 每次展开也会重扫，重复绑定只会让动画翻倍。
+ */
+function bindFriendFlip(els: HTMLElement[]) {
+  /* 系统开了「减少动态效果」就不翻，图片保持原样、链接照常能点 */
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  els.forEach((el) => {
+    if (!el.classList.contains('is-img')) return;   // 文字链接不参与
+    const img = el.querySelector<HTMLImageElement>('img');
+    if (!img || img.dataset.flip === '1') return;
+    img.dataset.flip = '1';
+
+    const SPEED = 2;
+    let angle = 0;         // 0~360，停下时必定是 0
+    let spinning = false;  // 鼠标在内：一直转
+    let restoring = false; // 鼠标已离开：转到下一圈归零再停
+    let running = false;   // 是否已有 rAF 链在跑
+
+    const tick = () => {
+      if (!spinning && !restoring) { running = false; return; }
+      angle += SPEED;
+      if (angle >= 360) {
+        /* 从 0 起每次 +2，360 能被整除，必然精确落在 360；
+           直接置 0 而不是取模，避免停在 1 度那种歪着的状态。 */
+        angle = 0;
+        if (restoring) restoring = false;
+      }
+      img.style.transform = `rotateY(${angle}deg)`;
+      requestAnimationFrame(tick);
+    };
+    const kick = () => {
+      if (running) return;   // 关键：绝不启动第二条链
+      running = true;
+      requestAnimationFrame(tick);
+    };
+
+    el.addEventListener('mouseenter', () => {
+      restoring = false;     // 取消「正在归零」，鼠标回来接着转
+      spinning = true;
+      kick();
+    });
+    el.addEventListener('mouseleave', () => {
+      if (!spinning) return;
+      spinning = false;
+      restoring = angle !== 0;   // 已经正好 0 度就直接停
+      if (restoring) kick();
+    });
+  });
+}
+
 function initFriendLinks() {
   const btn = document.querySelector<HTMLButtonElement>('#friends-toggle');
   const field = document.querySelector<HTMLElement>('#friend-field');
@@ -989,8 +1053,11 @@ function initFriendLinks() {
   const DECO_EDGE = 8; // 装饰可以贴边一点（它本来就在最底层，边缘会被 mask 淡掉）
   const DRIFT = 8;     // 漂浮幅度上限
 
-  /* 每展开一次重新随机字号 / 图片尺寸 —— 位置也跟着重排 */
+  /* 每展开一次重新随机字号 / 图片尺寸 —— 位置也跟着重排。
+     翻转绑定也在这里重扫一遍：以后若往数组里加了图片链接，不用另改初始化代码；
+     bindFriendFlip 自带幂等，重复调用不会让动画翻倍。 */
   const randomize = () => {
+    bindFriendFlip(getItems());
     getItems().forEach((el) => {
       const img = el.querySelector('img');
       if (img) {
