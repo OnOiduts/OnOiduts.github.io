@@ -6,6 +6,7 @@ import remarkVideo from './src/plugins/remark-video.mjs';
 import remarkEmbed from './src/plugins/remark-embed.mjs';
 import remarkAudio from './src/plugins/remark-audio.mjs';
 import remarkNoteImage from './src/plugins/remark-note-image.mjs';
+import remarkTextStyle from './src/plugins/remark-text-style.mjs';
 
 export default defineConfig({
   site: 'https://onoiduts.github.io',
@@ -20,9 +21,11 @@ export default defineConfig({
        2. remarkEmbed 必须在 remarkVideo **之前** —— 否则 :::embed 会被
           video 那遍的 containerDirective 遍历漏掉（两者互不冲突但分工不同）
        gallery / video 之间顺序无所谓 */
+    /* ⚠️ remarkTextStyle 必须在 remarkNoteImage 之前：先把 :::text 容器换成
+       html 节点，noteImage 才不会去碰容器里的段落。 */
     /* ⚠️ remarkNoteImage 放最后：它只认 root 直属的「单图段落」，
        前面几个指令插件已经把容器换成 html 节点，不会被误判成正文插图。 */
-    remarkPlugins: [remarkDirective, remarkEmbed, remarkAudio, remarkGallery, remarkVideo, remarkNoteImage],
+    remarkPlugins: [remarkDirective, remarkEmbed, remarkAudio, remarkGallery, remarkVideo, remarkTextStyle, remarkNoteImage],
     shikiConfig: {
       theme: 'github-dark-default',
       wrap: false,

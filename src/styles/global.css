@@ -2396,3 +2396,65 @@ img, video, audio, canvas, picture {
   .audio-player .asset-dl-t, .midi-player .asset-dl-t { display: none; }
   .asset-dl { padding: 0 6px; }
 }
+
+
+/* ============================================================
+   :::text 文字样式容器（字号 / 颜色 / 描边 / 渐变 / 软换行）
+   与 src/plugins/remark-text-style.mjs 配套；写作台预览输出同款 DOM。
+   ============================================================ */
+
+/* 变量全部给回退值：--accent / --text 这类只在带 data-theme / data-world
+   的页面上才有定义，测试页、整页预览、旧缓存 HTML 缺属性时不能整块失效。 */
+.ts-wrap {
+  --ts-size: var(--fs-body, 16px);
+  --ts-color: var(--text, #e6e6ea);
+  --ts-stroke: transparent;
+  --ts-sw: 0px;
+  --ts-grad: none;
+  display: grid;
+  margin: var(--sp-4, 18px) 0;
+  font-size: var(--ts-size, var(--fs-body, 16px));
+  line-height: var(--lh-body, 1.72);
+}
+/* 两层叠在同一格：内容相同 + 字号相同 → 逐字对齐，不会错位 */
+.ts-wrap > * { grid-area: 1 / 1; min-width: 0; }
+.ts-wrap p { margin: 0 0 var(--sp-3, 12px); }
+.ts-wrap p:last-child { margin-bottom: 0; }
+.ts-wrap h1, .ts-wrap h2, .ts-wrap h3 { font-size: inherit; margin: 0 0 var(--sp-3, 12px); }
+.ts-wrap blockquote { margin: 0 0 var(--sp-3, 12px); }
+.ts-wrap hr { margin: var(--sp-3, 12px) 0; }
+
+.ts-fill { color: var(--ts-color, var(--text, #e6e6ea)); }
+
+/* 只有描边、没有渐变：单层就够，不用复制 DOM。
+   paint-order 让描边画在填充后面，字腔不被吃掉（支持的浏览器上生效）。 */
+.ts-wrap.has-stroke:not(.has-grad) .ts-fill {
+  -webkit-text-stroke: var(--ts-sw, 0px) var(--ts-stroke, transparent);
+  paint-order: stroke fill;
+}
+
+/* 渐变填充：文字填充必须透明，才能把背景裁进字里 */
+.ts-wrap.has-grad .ts-fill {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: var(--ts-grad, none);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+/* 描边另起一层。宽度 ×2 是补偿：上层的渐变填充会盖住居中描边
+   朝内的那一半，不补偿的话视觉描边只有设定值的一半细。 */
+.ts-wrap.has-stroke.has-grad .ts-stroke {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: calc(var(--ts-sw, 0px) * 2) var(--ts-stroke, transparent);
+  paint-order: stroke fill;
+  pointer-events: none;
+  user-select: none;
+}
+/* 没有描边时只渲染填充层；没有渐变时也只渲染填充层 */
+.ts-wrap:not(.has-grad) .ts-stroke { display: none; }
+
+/* 容器内的链接跟着文字样式走：渐变时下划线不能自己冒出别的颜色 */
+.ts-wrap a { color: inherit; text-decoration: underline; text-underline-offset: .18em; }
+.ts-wrap strong, .ts-wrap em, .ts-wrap del, .ts-wrap code { color: inherit; }
+.ts-wrap code { font-size: .9em; }
