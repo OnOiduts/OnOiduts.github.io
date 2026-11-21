@@ -23,3 +23,93 @@ const friends: { name: string; url: string; logo?: string }[] = [
   { name: '小帕的小窝', url: 'https://jazzwhom.top/' },
   { name: 'Home - AIRA', url: 'https://aira.cafe/' },
 ];
+
+---
+
+<BaseLayout title="关于 · OnOiduts工业">
+  <div class="container page">
+    <!-- 可变区域：左边简介文字（往里缩），右边大图（半透明，纯装饰） -->
+    <section class="about-hero">
+      <div class="about-row" data-layer="org">
+        <div class="about-bio"><div class="prose"><BioOrg /></div></div>
+        <div class="about-art"><WorldSvg world="org" variant="hero" /></div>
+      </div>
+      <div class="about-row" data-layer="buono">
+        <div class="about-bio"><div class="prose"><BioBuono /></div></div>
+        <div class="about-art"><WorldSvg world="buono" variant="hero" /></div>
+      </div>
+      <div class="about-row" data-layer="zilan">
+        <div class="about-bio"><div class="prose"><BioZilan /></div></div>
+        <div class="about-art"><WorldSvg world="zilan" variant="hero" /></div>
+      </div>
+    </section>
+
+    <!-- 不可变区域：属于组织 -->
+    <section class="about-static">
+      <!-- 演职人员表：从下往上滚动、循环、可拖拽；链接任何时候都能点。
+           HTML 是静态的（无 JS 也能看全内容），滚动与拖拽由 ui.ts 接管。 -->
+      <div class="stack-block">
+        <h2>网站搭建</h2>
+        <div class="credits" id="credits">
+          <div class="credits-view">
+          <div class="credits-track" id="credits-track">
+            <div class="credits-list">
+              {
+                credits.map((item) => (
+                  <div class="credits-row">
+                    <span class="credits-k mono">{item.k}</span>
+                    {item.worldV ? (
+                      /* 「构思」跟世界变：三个世界各渲染一份，由 CSS 按 data-world 显示 */
+                      <span class="credits-v">
+                        {(['org', 'buono', 'zilan'] as const).map((w) => (
+                          <span class="credits-world" data-layer={w}>{item.worldV![w]}</span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span class="credits-v">
+                        {item.v!.map((p) =>
+                          p.url ? (
+                            <a class="credits-link" href={p.url} target="_blank" rel="noopener noreferrer">
+                              {p.text}
+                            </a>
+                          ) : (
+                            <Fragment>{p.text}</Fragment>
+                          )
+                        )}
+                      </span>
+                    )}
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="friends-block">
+        <h2>友情链接</h2>
+        <button class="btn-ghost" id="friends-toggle" type="button" aria-expanded="false">展开</button>
+        <div class="friend-field" id="friend-field">
+          {/* 椭圆星云背景：大小由 JS 按内容量出来，颜色跟世界强调色走 */}
+          <div class="friend-glow" id="friend-glow" aria-hidden="true"></div>
+          {
+            friends.map((f) => (
+              <a
+                class:list={['friend-item', f.logo && 'is-img']}
+                href={f.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-name={f.name}
+              >
+                <span class="friend-in">
+                  {f.logo ? <img src={f.logo} alt={f.name} loading="eager" decoding="async" /> : f.name}
+                </span>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+  </div>
+</BaseLayout>
