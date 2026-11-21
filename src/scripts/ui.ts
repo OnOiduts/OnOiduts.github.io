@@ -958,7 +958,7 @@ function initRandomFooter() {
 /* ------------------------------------------------------------------
    友情链接：展开后是一片「宇宙」
      · 区域高度按内容量出来（链接多少、图片大小都影响）
-     · 链接：文字 14~24px 随机 / 图片大边 40~80px 随机（保持比例，不拉伸不裁剪）
+     · 链接：文字 14~24px 随机 / 图片按宽高比分档（横条 130~190px、方形 60~96px），保持比例
      · 随机位置 + 漂浮，且互不遮挡（随机撒点 + 碰撞重试，撒不下就长高）
      · 装饰：夜间星星月亮，日间云朵太阳；数量随区域大小自适应
      · 四周径向渐隐；悬停放大 + 发光；点击跳官网
@@ -994,7 +994,17 @@ function initFriendLinks() {
     getItems().forEach((el) => {
       const img = el.querySelector('img');
       if (img) {
-        el.style.setProperty('--sz', `${rand(40, 80).toFixed(0)}px`);
+        /* 站名横排的宽幅 logo（内联 SVG 字标最常见）长边是「宽度」：
+           统一按 40~80px 限大边，600×100 的图会被压成 60×10px，
+           字比旁边 14~24px 的文字链接还小（实测 8.6~15px），看着就是一个点。
+           所以按宽高比分档：宽幅给 130~190px（视觉高约 23~33px），
+           方形给 60~96px。CSS 里 max-width/max-height 都取 --sz，
+           两边同时封顶 → 不拉伸、不裁剪，各自比例保持。
+           naturalWidth 可用是因为 layout() 在 await waitAssets() 之后才调本函数。 */
+        const nw = img.naturalWidth || 1;
+        const nh = img.naturalHeight || 1;
+        const [lo, hi] = nw / nh >= 2 ? [130, 190] : [60, 96];
+        el.style.setProperty('--sz', `${rand(lo, hi).toFixed(0)}px`);
       } else {
         el.style.setProperty('--fsz', `${rand(14, 24).toFixed(1)}px`);
       }
