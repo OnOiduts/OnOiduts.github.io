@@ -7,5 +7,5 @@
 - 正在被社会磨平棱角
 - 还在思考如何打破现状
 好想赚大钱...
-# 在哪儿能找到我？
-[bilibili](https://space.bilibili.com/259149243) [Github](https://https://github.com/XxBoLuoxX)
+## 在哪儿能找到我？
+[bilibili](https://space.bilibili.com/259149243) [Github](https://https://github.com/XxBoLuoxX) [Steam](https://steamcommunity.com/id/XxBo_LuoxX/)
