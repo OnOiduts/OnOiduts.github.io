@@ -287,7 +287,7 @@ function initCredits() {
 
 /**
  * 文章详情页：进入时静默同步到文章所属世界（无动效），保证配色与作者名一致。
- * URL 仍然不变，刷新回到组织。
+ * URL 仍然不变；刷新保持当前世界（同一个标签页内）。
  */
 function initForceWorld() {
   const el = document.querySelector<HTMLElement>('[data-force-world]');

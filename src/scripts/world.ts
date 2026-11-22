@@ -1,6 +1,7 @@
 /**
- * 世界状态 —— URL 不变，只是前端状态；刷新回世界 0。
- * 明暗是持久化的，世界不是（文档：刷新回组织）。
+ * 世界状态 —— URL 不变，只是前端状态。
+ * 明暗是持久化的；世界在同一个标签页内续上（sessionStorage），
+ * 刷新不再强制回组织，只有新开标签页 / 会话结束才回到组织。
  */
 import { atom } from 'nanostores';
 import { WORLD_IDS, type WorldId } from '../data/identities';
@@ -160,25 +161,16 @@ export function triggerB(origin?: HTMLElement | null) {
 }
 
 /* ------------------------------------------------------------------
-   站内导航保持世界，刷新回世界 0。
+   站内导航保持世界，F5 / Ctrl+R 刷新也保持世界。
    世界是前端状态，不写进 URL；用 sessionStorage 在同一次浏览里续上，
-   一旦检测到「刷新」就清掉，回到组织。
+   只有新开标签页 / 会话结束（sessionStorage 被清空）才回到组织。
    ------------------------------------------------------------------ */
 const WKEY = 'onoiduts-world';
 
 export function initWorld() {
-  const nav = performance.getEntriesByType('navigation')[0] as
-    | PerformanceNavigationTiming
-    | undefined;
-  const isReload = nav?.type === 'reload';
-
-  if (isReload) {
-    sessionStorage.removeItem(WKEY);
-  } else {
-    const saved = sessionStorage.getItem(WKEY) as WorldId | null;
-    if (saved && saved !== 'org' && WORLD_IDS.includes(saved)) {
-      setWorldQuiet(saved);
-    }
+  const saved = sessionStorage.getItem(WKEY) as WorldId | null;
+  if (saved && saved !== 'org' && WORLD_IDS.includes(saved)) {
+    setWorldQuiet(saved);
   }
 
   $world.subscribe((w) => {
