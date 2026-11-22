@@ -34,7 +34,7 @@ export const BUONO: Identity = {
   name: '波萝Buono',
   isPersona: true,
   // 人设名 / 指定单词 / 指定拼音 / MC ID
-  aliases: ['波萝Buono', 'Buono', 'boluo', 'XxBo_LuoxX'],
+  aliases: ['波萝Buono', '波萝', 'Buono', 'boluo', 'XxBo_LuoxX'],
   displayName: '波萝Buono',
   tagline: '小游戏实况主 · 捣鼓 AI 小工具 · 研究直播',
 };
