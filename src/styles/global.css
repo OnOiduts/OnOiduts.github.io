@@ -1881,8 +1881,13 @@ html[data-world='zilan'] .about-row[data-layer='zilan'] {
      这里是安全的 —— mask 在距中心 150px 处已全透明，而容器半高正好 150px，
      所以被裁掉的部分本来就完全不可见，不会出现「被框住」的硬边。 */
   overflow: hidden;
-  /* 滚到头不要再往外传，否则整页会跟着滚、位置错乱 */
-  overscroll-behavior: contain;
+  /* ⚠️ 这里必须用 auto，不能写 contain。
+     板块内容靠 ui.ts 的 rAF + transform 循环移动，自身**不是**原生滚动容器；
+     但内层 .credits-view 是 overflow:hidden 且内容比 300px 高，会作为滚动链
+     的一环接住滚轮。链传到 .credits 时被 contain 截断，鼠标停在这 300px 上
+     滚轮就完全失效、整页纹丝不动（实测 wheel 500px 只滚了 5px）。
+     auto 让滚轮照常带动整页滚动；循环滚动、拖拽、渐隐都不受影响。 */
+  overscroll-behavior: auto;
   /* 触摸设备上：手指在这里滑动只翻滚内容，不要被浏览器当成滚页面 */
   touch-action: none;
 }
