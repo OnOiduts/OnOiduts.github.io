@@ -30,6 +30,9 @@ export default function BlogExplorer({ articles }: Props) {
   const [isMobile, setIsMobile] = useState(false);
 
   const userHitRef = useRef<HTMLButtonElement>(null);
+  /* 中文输入法正在选字时按回车（比如打「孜岚」的 zi'lan 按回车上屏），
+     这一下是给输入法的，不是提交搜索，更不能顺手把世界切走。 */
+  const composingRef = useRef(false);
 
   // 进入时：URL 上的 world 静默同步（不算用户主动切换），tag 应用到筛选
   useEffect(() => {
@@ -117,7 +120,13 @@ export default function BlogExplorer({ articles }: Props) {
   }, [list, isMobile]);
 
   const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault();                       // 表单没有 action，不拦会刷新整页
+    if (composingRef.current) return;         // 输入法选字中的回车，不算提交
+    /* 搜到人设别名、下方已经出现「用户：XXX」入口时，按回车 = 点那个入口。
+       以前这里只 preventDefault，回车毫无反应，只能拿鼠标点按钮 —— 现在两条路
+       走同一个 switchWorld，连动效的圆心（userHitRef）都一致。
+       没命中人设时按回车什么都不做，仍然只是实时筛选文章，不误切世界。 */
+    if (hitUser) switchWorld(hitUser.id, userHitRef.current);
   };
 
   return (
@@ -129,6 +138,8 @@ export default function BlogExplorer({ articles }: Props) {
             value={q}
             placeholder={placeholderFor(world)}
             onChange={(e) => setQ(e.target.value)}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             aria-label="搜索"
           />
           <button className="search-btn" type="submit" aria-label="搜索">
@@ -149,6 +160,8 @@ export default function BlogExplorer({ articles }: Props) {
               ref={userHitRef}
               type="button"
               onClick={() => switchWorld(hitUser.id, userHitRef.current)}
+              title="点这里，或在搜索框里按回车，都能切换世界"
+              aria-keyshortcuts="Enter"
             >
               用户：{hitUser.name}
             </button>
