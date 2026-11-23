@@ -648,6 +648,12 @@ main {
 }
 .toc-toggle { display: none; }
 
+/* 服务端没有 Markdown H2 时，TOC.astro 仍渲染一个空壳（好让 ui.ts 按 DOM
+   补进 HTML 写的 <h2>）。补不出真正的 H2 之前必须完全不显示，否则纯文字
+   文章会冒出一个空目录 / 空按钮。!important 用来压住移动端 .toc-toggle
+   的 display:block 和 .toc 的 display:block。 */
+.toc.toc-pending, .toc-toggle.toc-pending { display: none !important; }
+
 /* ============ 阅读进度条 ============ */
 .progress {
   position: fixed;

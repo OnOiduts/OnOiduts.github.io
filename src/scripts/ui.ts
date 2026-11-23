@@ -407,9 +407,98 @@ function initBackToTop() {
 }
 
 /* ---- 目录：点击跳转 + 段落居中 + 临时高亮 1 秒；滚动同步 ---- */
+
+/** 与 github-slugger 同风格：空白 → 连字符，只留字母 / 数字 / 中文 / _ -。
+    Astro 给 Markdown 标题生成的 slug 就是这个形状，两边才对得上。 */
+function tocSlug(text: string): string {
+  return text.trim().replace(/\s+/g, '-').replace(/[^\p{L}\p{N}_-]/gu, '') || 'section';
+}
+
+/**
+ * 把「正文里直接写的 <h2>/<h3>」补进目录。
+ * ------------------------------------------------------------------
+ * Astro 的 render(entry).headings 只收 Markdown 的 `## 标题`（mdast heading
+ * 节点）。裸写的 <h2>…</h2> 是 mdast 的 html 节点，Astro 不会把它算进来 ——
+ * 于是纯 HTML 标题的文章连目录都不渲染，混写的文章也会漏掉那几条。
+ *
+ * 这里在渲染后按 DOM 实际顺序重建目录：给没 id 的 HTML 标题补 id，复用
+ * 服务端已渲染的 <a>（不改它们的 href），缺的补建，再按 h2 分组重排。
+ * TOC.astro 在没有 Markdown H2 时渲染的是带 .toc-pending 的空壳，扫到
+ * 真正的 H2 后才放出来，所以「没有 H2 就不显示目录」这条老规矩仍然成立。
+ */
+function buildDynamicTOC(toc: HTMLElement) {
+  const prose =
+    document.querySelector<HTMLElement>('.article .prose') ??
+    document.querySelector<HTMLElement>('.prose');
+  if (!prose) return;
+  /* 排除播放器 / 相册 / 文字样式容器 / 代码块 / 脚注里可能出现的装饰性标题，
+     只收正文真正的章节标题。 */
+  const heads = Array.from(prose.querySelectorAll<HTMLElement>('h2, h3')).filter(
+    (h) => !h.closest('.ts-wrap, .gallery, .player, .code-block, .footnotes')
+  );
+  if (!heads.length) return; // 一个标题都没有：原样保留服务端目录
+  const hasH2 = heads.some((h) => h.tagName === 'H2');
+
+  /* ① 只给没 id 的补 id。重复 initUI() 也不会改掉已有 id（幂等）。 */
+  const used = new Set(Array.from(document.querySelectorAll('[id]'), (e) => e.id));
+  heads.forEach((h) => {
+    if (h.id) return;
+    const base = tocSlug(h.textContent ?? '');
+    let id = base,
+      n = 1;
+    while (used.has(id)) id = `${base}-${n++}`;
+    h.id = id;
+    used.add(id);
+  });
+
+  /* ② 复用服务端已渲染的 <a>（不改它们的 href），只补缺的。
+        纯 Markdown 文章重排后与原来逐字一致，行为零变化。 */
+  const existing = new Map<string, HTMLAnchorElement>();
+  toc.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((a) => {
+    existing.set(decodeURIComponent(a.getAttribute('href')!.slice(1)), a);
+  });
+  const linkFor = (h: HTMLElement): HTMLAnchorElement => {
+    const hit = existing.get(h.id);
+    if (hit) return hit;
+    const a = document.createElement('a');
+    /* 新建的链接编码后再写进 href，中文 / 空格 / 括号都安全；
+       点击处 decodeURIComponent 会把 id 还原回来。 */
+    a.href = `#${encodeURIComponent(h.id)}`;
+    a.textContent = (h.textContent ?? '').trim();
+    if (h.tagName === 'H3') a.className = 'h3';
+    return a;
+  };
+
+  /* ③ 按 DOM 顺序重排：H2 起一组，H3 跟在最近的 H2 后面。 */
+  const groups: HTMLDivElement[] = [];
+  let current: HTMLDivElement | null = null;
+  heads.forEach((h) => {
+    if (h.tagName === 'H2' || !current) {
+      current = document.createElement('div');
+      groups.push(current);
+    }
+    current.appendChild(linkFor(h));
+  });
+  Array.from(toc.children).forEach((n) => {
+    if (!n.classList.contains('toc-title')) n.remove();
+  });
+  groups.forEach((g) => toc.appendChild(g));
+
+  /* ④ 只有真有 H2 才放出来（沿用「有 H2 才显示目录」的老规矩） */
+  if (hasH2) {
+    toc.classList.remove('toc-pending');
+    document.querySelector<HTMLElement>('#toc-toggle')?.classList.remove('toc-pending');
+  }
+}
+
+/* 模块级：重复 initUI()（View Transitions / 切世界）时先断开旧的观察器，
+   免得同一个标题被观察两遍、高亮来回跳。 */
+let tocObserver: IntersectionObserver | null = null;
+
 function initTOC() {
   const toc = document.querySelector<HTMLElement>('#toc');
   if (!toc) return;
+  buildDynamicTOC(toc);
   const toggle = document.querySelector<HTMLButtonElement>('#toc-toggle');
   /* ⚠️ 目录要两个类才显示：
        .mobile-open = 「进入移动端模式」（display:block + fixed 定位）
@@ -419,14 +508,19 @@ function initTOC() {
   const mqMobile = window.matchMedia('(max-width: 900px)');
   const syncMobile = () => toc.classList.toggle('mobile-open', mqMobile.matches);
   syncMobile();
-  mqMobile.addEventListener('change', syncMobile);
-  toggle?.addEventListener('click', () => {
-    syncMobile();
-    toc.classList.toggle('open');
-  });
+  if (!toggle?.dataset.tocBound) {
+    if (toggle) toggle.dataset.tocBound = '1';
+    mqMobile.addEventListener('change', syncMobile);
+    toggle?.addEventListener('click', () => {
+      syncMobile();
+      toc.classList.toggle('open');
+    });
+  }
 
   const links = Array.from(toc.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
-  links.forEach((a) =>
+  links.forEach((a) => {
+    if (a.dataset.tocBound) return;
+    a.dataset.tocBound = '1';
     a.addEventListener('click', (e) => {
       const id = decodeURIComponent(a.getAttribute('href')!.slice(1));
       const target = document.getElementById(id);
@@ -438,15 +532,23 @@ function initTOC() {
       target.classList.add('toc-hl');
       window.setTimeout(() => target.classList.remove('toc-hl'), 1000);
       toc.classList.remove('open');
-    })
-  );
+    });
+  });
 
-  const io = new IntersectionObserver(
+  tocObserver?.disconnect();
+  tocObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach((e) => {
         if (!e.isIntersecting) return;
+        const targetId = (e.target as HTMLElement).id;
+        /* 两边都 decode 成原始 id 再比：服务端链接是 `#章节01`（未编码），
+           新建链接是 `#%E7%AB%A0...`（已编码），直接比字符串永远比不上，
+           中文标题的滚动高亮就一直不亮。 */
         links.forEach((a) =>
-          a.classList.toggle('active', a.getAttribute('href') === `#${encodeURIComponent(e.target.id)}`)
+          a.classList.toggle(
+            'active',
+            decodeURIComponent(a.getAttribute('href')!.slice(1)) === targetId
+          )
         );
       });
     },
@@ -454,7 +556,7 @@ function initTOC() {
   );
   links.forEach((a) => {
     const el = document.getElementById(decodeURIComponent(a.getAttribute('href')!.slice(1)));
-    if (el) io.observe(el);
+    if (el) tocObserver!.observe(el);
   });
 }
 
