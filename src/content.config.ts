@@ -19,9 +19,14 @@ const articles = defineCollection({
        ⚠️ 用 default('original') 而不是 optional —— 老文章没写这个字段也能过，
        且渲染时不需要到处判空。 */
     kind: z.enum(['original', 'reprint']).default('original'),
-    /* 转载的话，来源是哪家（纯展示文字） */
+    /* 转载的话，来源是哪家平台（纯展示文字）。
+       ⚠️ 老文章里 source: 可能写的是「平台 + 作者」混在一起的旧文案，
+       照原样显示即可，不拆分、不迁移。 */
     source: z.string().optional(),
-    /* 原文链接。有就渲染成可点的「原文」链接，没有就只显示来源名。 */
+    /* 原作者（可选）。写作台把「转载来源」拆成「原平台 + 原作者」两栏后写入。
+       optional：老文章没有这个字段照样过校验。 */
+    sourceAuthor: z.string().optional(),
+    /* 原文链接。有就渲染成可点的「原文」链接，没有就只显示来源文字。 */
     sourceUrl: z.string().optional(),
   }),
 });

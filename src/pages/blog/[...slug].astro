@@ -35,6 +35,11 @@ const { Content, headings } = await render(entry);
 const d = entry.data;
 const chars = countChars(entry.body ?? '');
 const author = IDENTITIES[d.world].name;
+/* 转载来源：原平台 · 原作者 一起显示。
+   ⚠️ 兼容老文章：source 里可能本来就写着「平台 + 作者」一整句，照原样显示；
+   两个字段都没有时回落到原文链接，避免「来源：」后面空一块。
+   sourceAuthor 是 content.config.ts 里的 optional 字段，老文章没写也能取到 undefined。 */
+const sourceLabel = [d.source, d.sourceAuthor].filter(Boolean).join(' · ') || d.sourceUrl || '';
 ---
 
 <BaseLayout title={`${d.title} · ${author}`} description={d.excerpt} withProgress>
@@ -59,13 +64,13 @@ const author = IDENTITIES[d.world].name;
           {d.kind === 'reprint' ? '转载' : '原创'}
         </span>
         作者：{author} · 约 {readMinutes(chars)} 分钟 · {chars} 字
-        {d.kind === 'reprint' && (d.source || d.sourceUrl) && (
+        {d.kind === 'reprint' && sourceLabel && (
           <span class="article-source">
             {' · 来源：'}
             {d.sourceUrl ? (
-              <a href={d.sourceUrl} target="_blank" rel="noopener noreferrer">{d.source || d.sourceUrl}</a>
+              <a href={d.sourceUrl} target="_blank" rel="noopener noreferrer">{sourceLabel}</a>
             ) : (
-              d.source
+              sourceLabel
             )}
           </span>
         )}

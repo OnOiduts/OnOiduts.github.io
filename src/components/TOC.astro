@@ -1,15 +1,19 @@
 ---
 /**
- * 目录：左侧悬浮靠上；有 H2 才显示；H2 下面缩进显示 H3；
+ * 目录：左侧悬浮靠上；有顶层标题才显示；H3 缩进挂在最近的顶层后面；
  * 点击跳转、段落居中、临时高亮 1 秒；跟当前世界强调色。
  * 移动端折叠成按钮放左上角，展开后半屏从左边滑出。
  *
- * ⚠️ Astro 的 render(entry).headings 只收 Markdown 的 `## 标题`。
- *    正文里直接写的 <h2>…</h2> 是 mdast 的 html 节点，不在 headings 里，
+ * ⚠️ 「顶层标题」= H1 或 H2。文章页自己的大标题是 <h1 class="article-title">，
+ *    在 .prose 之外，不会被收进来；正文里用 <h1> / # 分章节是常见写法，
+ *    以前只认 H2 会把这类文章整篇漏掉（目录干脆不渲染）。
+ *
+ * ⚠️ Astro 的 render(entry).headings 只收 Markdown 的 `# / ## / ###`。
+ *    正文里直接写的 <h1>…</h1> 是 mdast 的 html 节点，不在 headings 里，
  *    所以纯 HTML 标题的文章以前连目录都没有、混写的文章也会漏项。
- *    这里始终渲染外壳；没有 Markdown H2 时先加 .toc-pending 藏起来，
- *    由 ui.ts 的 buildDynamicTOC() 扫到 DOM 里真正的 H2 后再放出来。
- *    这样「没有 H2 就不显示目录」这条老规矩仍然成立。
+ *    这里始终渲染外壳；服务端没收到顶层标题时先加 .toc-pending 藏起来，
+ *    由 ui.ts 的 buildDynamicTOC() 扫到 DOM 里真正的 H1/H2 后再放出来。
+ *    「只有 H3、没有顶层标题就不显示目录」这条老规矩仍然成立。
  */
 import type { MarkdownHeading } from 'astro';
 
@@ -18,19 +22,19 @@ interface Props {
 }
 const { headings } = Astro.props;
 
-// 只保留 H2 / H3，且必须存在 H2 才渲染
-const flat = headings.filter((h) => h.depth === 2 || h.depth === 3);
-const hasH2 = flat.some((h) => h.depth === 2);
+// H1 / H2 都算顶层章节，H3 缩进；必须存在顶层标题才渲染
+const flat = headings.filter((h) => h.depth === 1 || h.depth === 2 || h.depth === 3);
+const hasTop = flat.some((h) => h.depth === 1 || h.depth === 2);
 const tree: { h: MarkdownHeading; children: MarkdownHeading[] }[] = [];
 for (const h of flat) {
-  if (h.depth === 2) tree.push({ h, children: [] });
+  if (h.depth === 1 || h.depth === 2) tree.push({ h, children: [] });
   else tree[tree.length - 1]?.children.push(h);
 }
 ---
 
 <>
-  <button class:list={['toc-toggle', !hasH2 && 'toc-pending']} id="toc-toggle" type="button">目录</button>
-  <aside class:list={['toc', !hasH2 && 'toc-pending']} id="toc" data-toc-dynamic>
+  <button class:list={['toc-toggle', !hasTop && 'toc-pending']} id="toc-toggle" type="button">目录</button>
+  <aside class:list={['toc', !hasTop && 'toc-pending']} id="toc" data-toc-dynamic>
     <div class="toc-title">目录</div>
     {tree.map(({ h, children }) => (
       <div>

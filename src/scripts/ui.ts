@@ -415,16 +415,19 @@ function tocSlug(text: string): string {
 }
 
 /**
- * 把「正文里直接写的 <h2>/<h3>」补进目录。
+ * 把「正文里直接写的 <h1>/<h2>/<h3>」补进目录。
  * ------------------------------------------------------------------
- * Astro 的 render(entry).headings 只收 Markdown 的 `## 标题`（mdast heading
- * 节点）。裸写的 <h2>…</h2> 是 mdast 的 html 节点，Astro 不会把它算进来 ——
- * 于是纯 HTML 标题的文章连目录都不渲染，混写的文章也会漏掉那几条。
+ * Astro 的 render(entry).headings 只收 Markdown 的 `# / ## / ###`（mdast
+ * heading 节点）。裸写的 <h2>…</h2> 是 mdast 的 html 节点，Astro 不会把它
+ * 算进来 —— 于是纯 HTML 标题的文章连目录都不渲染，混写的文章也会漏项。
+ *
+ * 正文里用 <h1> / `#` 分章节同样常见（文章页自己的大标题在 .prose 之外，
+ * 不会被扫到），所以 H1 和 H2 都算顶层章节、H3 缩进挂在最近的顶层后面。
  *
  * 这里在渲染后按 DOM 实际顺序重建目录：给没 id 的 HTML 标题补 id，复用
- * 服务端已渲染的 <a>（不改它们的 href），缺的补建，再按 h2 分组重排。
- * TOC.astro 在没有 Markdown H2 时渲染的是带 .toc-pending 的空壳，扫到
- * 真正的 H2 后才放出来，所以「没有 H2 就不显示目录」这条老规矩仍然成立。
+ * 服务端已渲染的 <a>（不改它们的 href），缺的补建，再按顶层分组重排。
+ * TOC.astro 在服务端没收到顶层标题时渲染的是带 .toc-pending 的空壳，扫到
+ * 真正的 H1/H2 后才放出来，所以「只有 H3 就不显示目录」这条老规矩仍然成立。
  */
 function buildDynamicTOC(toc: HTMLElement) {
   const prose =
@@ -432,12 +435,14 @@ function buildDynamicTOC(toc: HTMLElement) {
     document.querySelector<HTMLElement>('.prose');
   if (!prose) return;
   /* 排除播放器 / 相册 / 文字样式容器 / 代码块 / 脚注里可能出现的装饰性标题，
-     只收正文真正的章节标题。 */
-  const heads = Array.from(prose.querySelectorAll<HTMLElement>('h2, h3')).filter(
-    (h) => !h.closest('.ts-wrap, .gallery, .player, .code-block, .footnotes')
+     只收正文真正的章节标题。文章主标题 .article-title 不在 .prose 内，
+     这里再补一道保险，免得哪天模板改了把大标题也列进目录。 */
+  const heads = Array.from(prose.querySelectorAll<HTMLElement>('h1, h2, h3')).filter(
+    (h) => !h.classList.contains('article-title') &&
+      !h.closest('.ts-wrap, .gallery, .player, .code-block, .footnotes')
   );
   if (!heads.length) return; // 一个标题都没有：原样保留服务端目录
-  const hasH2 = heads.some((h) => h.tagName === 'H2');
+  const hasTop = heads.some((h) => h.tagName === 'H1' || h.tagName === 'H2');
 
   /* ① 只给没 id 的补 id。重复 initUI() 也不会改掉已有 id（幂等）。 */
   const used = new Set(Array.from(document.querySelectorAll('[id]'), (e) => e.id));
@@ -469,11 +474,12 @@ function buildDynamicTOC(toc: HTMLElement) {
     return a;
   };
 
-  /* ③ 按 DOM 顺序重排：H2 起一组，H3 跟在最近的 H2 后面。 */
+  /* ③ 按 DOM 顺序重排：H1 / H2 各起一组（同级显示），H3 跟在最近的
+        顶层后面并缩进。只有 H3、前面没有顶层时也先起一组，别把字丢掉。 */
   const groups: HTMLDivElement[] = [];
   let current: HTMLDivElement | null = null;
   heads.forEach((h) => {
-    if (h.tagName === 'H2' || !current) {
+    if (h.tagName !== 'H3' || !current) {
       current = document.createElement('div');
       groups.push(current);
     }
@@ -484,8 +490,8 @@ function buildDynamicTOC(toc: HTMLElement) {
   });
   groups.forEach((g) => toc.appendChild(g));
 
-  /* ④ 只有真有 H2 才放出来（沿用「有 H2 才显示目录」的老规矩） */
-  if (hasH2) {
+  /* ④ 只有真有 H1/H2 才放出来（「只有 H3 不显示目录」的老规矩仍成立） */
+  if (hasTop) {
     toc.classList.remove('toc-pending');
     document.querySelector<HTMLElement>('#toc-toggle')?.classList.remove('toc-pending');
   }
