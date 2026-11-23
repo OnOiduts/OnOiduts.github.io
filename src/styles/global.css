@@ -1251,6 +1251,11 @@ main {
 
 .prose table { width: 100%; border-collapse: collapse; margin: var(--sp-3) 0; font-size: var(--fs-sm); }
 .prose th, .prose td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+/* GFM 表格的 :---: / ---: 会输出 align 属性，但上面那条 text-align:left
+   会把它盖掉（HTML 的 align 只是个低优先级的表现提示）。补两条让列对齐生效，
+   没写对齐的格子仍然靠左，旧表格一个字不用改。 */
+.prose th[align="center"], .prose td[align="center"] { text-align: center; }
+.prose th[align="right"],  .prose td[align="right"]  { text-align: right; }
 .prose th { background: var(--bg-sunken); font-weight: 600; }
 .prose code:not(pre code) {
   font-family: var(--font-mono); font-size: .9em;

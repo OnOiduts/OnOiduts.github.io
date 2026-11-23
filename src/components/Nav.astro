@@ -62,31 +62,89 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
 
 <script>
   /**
-   * 点导航链接 → 标记「下一页跳过加载遮罩」。
+   * 站内板块切换：先把当前页盖住（离场过渡），过渡播完再跳转。
+   *
+   * 原来只在新页面加载完之后播 0.5 秒淡入 —— MPA 整页导航要等 1~2 秒
+   * （外链字体 / 图床慢时更久），这段时间旧页面原封不动摆着，用户看到的是
+   * 「内容先摆一两秒，然后才冒出过渡」，顺序反了。
+   *
+   * 现在点击瞬间就盖一层跟主题背景同色的全屏遮罩（220ms 淡入），遮罩不透明
+   * 之后才 location.assign；新页面 head 读到 skip-boot 标记，跳过加载遮罩，
+   * 用原有的 page-in / grid-in 从同一底色淡入。于是整条链路是
+   * 「先过渡 → 再显示」，中间不会再露旧内容。
    *
    * 为什么用 sessionStorage 而不是直接上 View Transitions：
    * 这套是纯静态 MPA，导航本质仍是整页刷新；用标记跳过遮罩最轻，
    * 不用改渲染架构。标记在下一页 head 的 inline script 里读完即清，
    * 所以真正的刷新 / 新标签页打开仍然会正常显示加载态。
    *
-   * 只认站内同源的普通跳转：外链、锚点、新窗口打开都不算。
+   * ⚠️ 监听挂在**冒泡阶段**：assetGuard 在捕获阶段会拦掉「媒体链接」和
+   * Ctrl/⌘/Shift 点击，credits 拖拽会 stopPropagation。等它们跑完再看
+   * e.defaultPrevented，才不会把不该拦的点击也抢过来。
    */
   (function () {
     var KEY = 'onoiduts-skip-boot';
-    var mark = function (e) {
+    var LEAVE_MS = 220;
+    var leaving = false;
+    var veil = null;
+
+    function clearVeil() {
+      if (veil) { veil.remove(); veil = null; }
+      document.documentElement.classList.remove('nav-leaving');
+    }
+    function makeVeil() {
+      clearVeil();
+      veil = document.createElement('div');
+      veil.id = 'nav-veil';
+      veil.setAttribute('aria-hidden', 'true');
+      /* 全内联：不依赖 global.css，也不给 #app 加 transform / animation，
+         避免碰到 position:fixed 的导航栏和目录。z-index 290 在 #boot(300) 之下、
+         内容之上；skip-boot 时 #boot 本来就是 display:none。 */
+      veil.style.cssText =
+        'position:fixed;inset:0;z-index:290;opacity:0;pointer-events:auto;' +
+        'background:var(--bg,#0b0c0f);will-change:opacity';
+      document.body.appendChild(veil);
+      document.documentElement.classList.add('nav-leaving');
+      return veil;
+    }
+    /* 后退 / bfcache 恢复时别把遮罩留在旧文档上 */
+    window.addEventListener('pageshow', function (e) {
+      if (e.persisted) { leaving = false; clearVeil(); }
+    });
+
+    var onNavClick = function (e) {
+      if (e.defaultPrevented) return;                  // 别的脚本已经处理了
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       var a = e.target && e.target.closest ? e.target.closest('a') : null;
       if (!a) return;
       if (a.target && a.target !== '_self') return;      // 新窗口
       if (a.hasAttribute('download')) return;
       var href = a.getAttribute('href') || '';
       if (!href || href.charAt(0) === '#') return;       // 锚点
-      try {
-        if (new URL(a.href, location.href).origin !== location.origin) return; // 外链
-      } catch (err) {
-        return;
-      }
+      var url;
+      try { url = new URL(a.href, location.href); } catch (err) { return; }
+      if (url.origin !== location.origin) return;        // 外链
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+      /* 同页只换 hash：交给浏览器，不播过渡也不写标记 */
+      if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+      /* 过渡中再点：拦掉，避免连跳两次 */
+      if (leaving) { e.preventDefault(); return; }
+
       try { sessionStorage.setItem(KEY, '1'); } catch (err) {}
+
+      e.preventDefault();
+      leaving = true;
+      var v = makeVeil();
+      var go = function () { leaving = false; window.location.assign(url.href); };
+      var anim = typeof v.animate === 'function'
+        ? v.animate([{ opacity: 0 }, { opacity: 1 }],
+                    { duration: LEAVE_MS, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
+        : null;
+      if (anim && anim.finished) anim.finished.then(go).catch(go);
+      else { v.style.transition = 'opacity ' + LEAVE_MS + 'ms ease'; requestAnimationFrame(function () { v.style.opacity = '1'; }); setTimeout(go, LEAVE_MS + 20); }
+      /* 兜底：动画/跳转被浏览器挡下时，别把遮罩永远留在页面上 */
+      setTimeout(function () { if (leaving) { leaving = false; clearVeil(); } }, 3000);
     };
-    document.addEventListener('click', mark, true);
+    document.addEventListener('click', onNavClick);
   })();
 </script>
