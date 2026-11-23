@@ -497,10 +497,32 @@ function buildDynamicTOC(toc: HTMLElement) {
   }
 }
 
-/* 模块级：重复 initUI()（View Transitions / 切世界）时先断开旧的观察器，
-   免得同一个标题被观察两遍、高亮来回跳。 */
-let tocObserver: IntersectionObserver | null = null;
+/* 模块级：重复 initUI()（View Transitions / 切世界）时先撤掉旧的滚动监听，
+   免得同一帧算两遍、监听越堆越多。 */
+let tocScrollCleanup: (() => void) | null = null;
 
+/**
+ * 「当前读到哪一节」的高亮，为什么不用 IntersectionObserver 了。
+ * ------------------------------------------------------------------
+ * 旧实现把 rootMargin 设成 '-20% 0px -70% 0px' —— 观察带只有视口
+ * 20%~30% 那一条 10% 高的窄带，而且 `if (!e.isIntersecting) return`
+ * 把「离开带」的事件全丢了。于是：
+ *   ① 章节标题之间隔着大段正文时，带里常常一个标题都没有 → 没有任何
+ *      回调 → active 冻结在上一节，怎么滚都不变；
+ *   ② 大标题偏下（比如出现在视口 53% 处）根本进不了 20%~30% 的带，
+ *      明明满屏都是「后记」，左侧还亮着「四.」；
+ *   ③ 快速滚动时一批 entries 的到达顺序不保证按文档顺序，最后停下的
+ *      可能是靠前的那一个。
+ *
+ * 改成按位置算：取「最后一个顶边越过判定线」的标题，天然按文档顺序、
+ * 永远不会冻结。判定线取视口 60% 高度（不是常见的 30%）有两个原因：
+ *   - 正文常有大段留白，章节大标题出现在屏幕中下部时读者就已经认为
+ *     「到这一节了」，太靠上会显得高亮慢半拍；
+ *   - 点击跳转用的是 scrollIntoView({block:'center'})，目标落在 50% 附近，
+ *     判定线必须在它下面，否则点完目录立刻又高亮回前一节。
+ * 另外补一条底部兜底：最后一节太短、标题永远到不了判定线时，滚到底就
+ * 强制高亮最后一项。
+ */
 function initTOC() {
   const toc = document.querySelector<HTMLElement>('#toc');
   if (!toc) return;
@@ -524,14 +546,28 @@ function initTOC() {
   }
 
   const links = Array.from(toc.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
+  /* 两边都 decode 成原始 id 再比：服务端链接是 `#章节01`（未编码），
+     新建链接是 `#%E7%AB%A0...`（已编码），直接比字符串永远比不上，
+     中文标题的滚动高亮就一直不亮。 */
+  const idOf = (a: HTMLAnchorElement) => decodeURIComponent(a.getAttribute('href')!.slice(1));
+  const items: { a: HTMLAnchorElement; el: HTMLElement }[] = [];
+  links.forEach((a) => {
+    const el = document.getElementById(idOf(a));
+    if (el) items.push({ a, el });
+  });
+  const setActive = (id: string) =>
+    links.forEach((a) => a.classList.toggle('active', idOf(a) === id));
+
   links.forEach((a) => {
     if (a.dataset.tocBound) return;
     a.dataset.tocBound = '1';
     a.addEventListener('click', (e) => {
-      const id = decodeURIComponent(a.getAttribute('href')!.slice(1));
+      const id = idOf(a);
       const target = document.getElementById(id);
       if (!target) return;
       e.preventDefault();
+      /* 先立刻把左侧高亮切到目标，别等平滑滚动结束才反应。 */
+      setActive(id);
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       target.classList.remove('toc-hl');
       void target.offsetWidth;
@@ -541,29 +577,38 @@ function initTOC() {
     });
   });
 
-  tocObserver?.disconnect();
-  tocObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((e) => {
-        if (!e.isIntersecting) return;
-        const targetId = (e.target as HTMLElement).id;
-        /* 两边都 decode 成原始 id 再比：服务端链接是 `#章节01`（未编码），
-           新建链接是 `#%E7%AB%A0...`（已编码），直接比字符串永远比不上，
-           中文标题的滚动高亮就一直不亮。 */
-        links.forEach((a) =>
-          a.classList.toggle(
-            'active',
-            decodeURIComponent(a.getAttribute('href')!.slice(1)) === targetId
-          )
-        );
-      });
-    },
-    { rootMargin: '-20% 0px -70% 0px' }
-  );
-  links.forEach((a) => {
-    const el = document.getElementById(decodeURIComponent(a.getAttribute('href')!.slice(1)));
-    if (el) tocObserver!.observe(el);
-  });
+  tocScrollCleanup?.();
+  tocScrollCleanup = null;
+  if (!items.length) return;
+
+  let raf = 0;
+  const update = () => {
+    raf = 0;
+    const line = window.innerHeight * 0.6;
+    let current = items[0].el;
+    for (const it of items) {
+      if (it.el.getBoundingClientRect().top <= line) current = it.el;
+      else break;
+    }
+    /* 滚到页面底部时强制高亮最后一节：最后一节内容可能很短，标题永远
+       越不过判定线（或整页高度不足以让任何标题到线），否则会一直亮着
+       倒数第二节。用 scrollHeight 而不是某个标题的位置，兼容各种版式。 */
+    const doc = document.documentElement;
+    if (window.scrollY + window.innerHeight >= doc.scrollHeight - 2)
+      current = items[items.length - 1].el;
+    setActive(current.id);
+  };
+  const onScroll = () => {
+    if (!raf) raf = window.requestAnimationFrame(update);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
+  update(); // 首屏 / 刷新到锚点位置也要立刻算一次
+  tocScrollCleanup = () => {
+    window.removeEventListener('scroll', onScroll);
+    window.removeEventListener('resize', onScroll);
+    if (raf) window.cancelAnimationFrame(raf);
+  };
 }
 
 /* ---- 图片灯箱：第一次适应屏幕，第二次原图大小，可拖动 / 滚轮缩放 ---- */
