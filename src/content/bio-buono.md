@@ -9,3 +9,5 @@
 好想赚大钱...
 ## 在哪儿能找到我？
 [bilibili](https://space.bilibili.com/259149243) [Steam](https://steamcommunity.com/id/XxBo_LuoxX/) [Github](https://https://github.com/XxBoLuoxX) 
+### 基本不用
+[Youtube](https://www.youtube.com/@XxBo_LuoxX) 

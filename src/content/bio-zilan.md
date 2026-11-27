@@ -9,7 +9,7 @@
 ### 国内平台
 [bilibili](https://space.bilibili.com/1142118273) [网易云音乐](https://music.163.com/#/artist?id=51249151)
 ### 国外平台（其实也不怎么用）
-[niconico] [Youtube] 
+[niconico](https://www.nicovideo.jp/user/126085344) [Youtube](https://www.youtube.com/@Xiao_Zi_Lan)
 ### 打游戏
 [Steam](https://steamcommunity.com/id/XxBo_LuoxX/)
 
